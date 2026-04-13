@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kiubo Arcade Ops | Local Dashboard</title>
+    <meta name="theme-color" content="#07111f" />
+    <link rel="icon" type="image/svg+xml" href="/dashboard-brand.svg" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <div class="brand-lockup">
+            <div class="brand-emblem-shell">
+              <img class="brand-emblem" src="/dashboard-brand.svg" alt="Kiubo Arcade Ops logo" />
+            </div>
+            <div>
+              <p class="eyebrow">Local Control Room</p>
+              <h1>Kiubo Arcade Ops</h1>
+              <p class="subtitle">
+                Launch backlog runs, edit tasks, and watch the pipeline progress in real time.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="hero-meta">
+          <div class="meta-card repo-meta-card">
+            <span class="meta-label">Repo</span>
+            <div class="repo-meta-content">
+              <code id="repo-root">...</code>
+              <span id="dirty-indicator" class="status-pill neutral">Checking...</span>
+            </div>
+            <div class="repo-actions">
+              <button id="cleanup-merged-branches-button" type="button">
+                Remove merged branches
+              </button>
+              <p id="cleanup-merged-branches-copy" class="muted">
+                Checking merged task branches...
+              </p>
+            </div>
+          </div>
+          <button id="settings-button" class="settings-launch" type="button">
+            <span class="meta-label">Environment</span>
+            <strong>Pit Stop</strong>
+            <span class="settings-launch-copy">Open repo, auth, and Codex CLI checks.</span>
+          </button>
+        </div>
+        <section class="hero-status-panel meta-card" aria-label="Runner status overview">
+          <div class="hero-status-header">
+            <div>
+              <span class="meta-label">Runner Status</span>
+              <h2 id="runner-status-title">Checking runner...</h2>
+              <p id="runner-status-copy" class="muted">
+                Gathering local runner telemetry.
+              </p>
+            </div>
+            <span id="runner-status-pill" class="status-pill neutral">Checking...</span>
+          </div>
+          <div class="hero-status-grid">
+            <article class="hero-status-card">
+              <span class="meta-label">Current Activity</span>
+              <strong id="runner-activity-primary">Waiting for overview</strong>
+              <span id="runner-activity-secondary" class="muted">
+                The dashboard is loading the latest runner activity.
+              </span>
+            </article>
+            <article class="hero-status-card">
+              <span class="meta-label">Launch Readiness</span>
+              <strong id="runner-launch-primary">Checking environment</strong>
+              <span id="runner-launch-secondary" class="muted">
+                Validating branch, auth, and Codex CLI availability.
+              </span>
+            </article>
+            <article class="hero-status-card">
+              <span class="meta-label">Active Runs</span>
+              <strong id="runner-active-primary">Checking active runs</strong>
+              <span id="runner-active-secondary" class="muted">
+                Looking for runner processes and in-flight tasks.
+              </span>
+            </article>
+            <article class="hero-status-card">
+              <span class="meta-label">Latest Run</span>
+              <strong id="runner-latest-primary">Checking history</strong>
+              <span id="runner-latest-secondary" class="muted">
+                Reading the most recent run summary.
+              </span>
+            </article>
+            <article class="hero-status-card">
+              <span class="meta-label">Connectivity</span>
+              <strong id="runner-access-primary">Checking access</strong>
+              <span id="runner-access-secondary" class="muted">
+                Confirming the dashboard and local tooling are reachable.
+              </span>
+            </article>
+            <article class="hero-status-card">
+              <span class="meta-label">Limits And Credits</span>
+              <strong id="runner-limits-primary">Checking telemetry</strong>
+              <span id="runner-limits-secondary" class="muted">
+                Looking for quota and rate-limit signals.
+              </span>
+            </article>
+          </div>
+        </section>
+      </header>
+
+      <main class="layout">
+        <section class="panel backlog-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Backlog</h2>
+              <p>Select tasks to run, edit them inline, and move reviewed work into Done.</p>
+            </div>
+            <div class="header-actions">
+              <button id="run-all-button" class="primary">Run All</button>
+              <button id="run-selected-button">Run Selected</button>
+            </div>
+          </div>
+
+          <span id="save-status" class="visually-hidden muted" aria-live="polite">Ready.</span>
+
+          <div id="task-list" class="task-list"></div>
+        </section>
+
+        <section class="panel form-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Task Editor</h2>
+              <p>Create a new task or update an existing one.</p>
+            </div>
+            <button id="new-task-button">New Task</button>
+          </div>
+
+          <form id="task-form" class="task-form">
+            <label>
+              <span>Task ID</span>
+              <input name="id" required placeholder="example-task" />
+            </label>
+            <label>
+              <span>Title</span>
+              <input name="title" required placeholder="Example task" />
+            </label>
+            <label>
+              <span>Description</span>
+              <textarea name="description" rows="3" placeholder="What should this task do?"></textarea>
+            </label>
+            <section class="attachment-section">
+              <div class="attachment-section-header">
+                <div>
+                  <h3>Attachments</h3>
+                  <p>Add reference files and photos for this backlog task.</p>
+                </div>
+              </div>
+              <label class="file-picker">
+                <span>Add Files Or Photos</span>
+                <input
+                  id="task-attachments-input"
+                  name="attachments"
+                  type="file"
+                  multiple
+                  accept="image/*,.pdf,.txt,.md,.json,.csv,.doc,.docx,.xls,.xlsx,.zip"
+                />
+              </label>
+              <p class="muted attachment-help">
+                Images are previewed here and also attached directly to Codex when the task runs.
+              </p>
+              <div id="task-attachments" class="attachment-list empty-state">
+                No attachments yet. Add files or photos to give this task more context.
+              </div>
+            </section>
+            <label>
+              <span>Test Command</span>
+              <textarea
+                name="test_command"
+                rows="3"
+                placeholder="Optional. Example: git rev-parse --is-inside-work-tree"
+              ></textarea>
+            </label>
+            <div class="grid-two">
+              <label>
+                <span>Base Branch</span>
+                <input name="base_branch" placeholder="main" />
+              </label>
+              <label>
+                <span>Working Directory</span>
+                <input name="working_directory" placeholder="." />
+              </label>
+            </div>
+            <div class="grid-two">
+              <label>
+                <span>Retry Limit</span>
+                <input name="retry_limit" type="number" min="0" value="2" />
+              </label>
+              <label>
+                <span>Executor Type</span>
+                <input name="executor_type" placeholder="codex" />
+              </label>
+            </div>
+            <label>
+              <span>Executor Prompt</span>
+              <textarea name="executor_prompt" rows="3" placeholder="Optional extra instructions for Codex."></textarea>
+            </label>
+            <div class="form-actions">
+              <button type="submit" class="primary">Save Task</button>
+              <button type="button" id="delete-task-button" class="danger">Delete</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel runs-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Runs</h2>
+              <p>Recent runs refresh automatically every two seconds.</p>
+            </div>
+            <div class="header-actions">
+              <button id="clear-runs-button" type="button" class="danger">Clear Runs</button>
+            </div>
+          </div>
+          <div id="run-list" class="run-list"></div>
+        </section>
+
+        <section class="panel detail-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Run Detail</h2>
+              <p id="run-detail-subtitle">Select a run to inspect it.</p>
+            </div>
+          </div>
+
+          <div id="run-detail" class="run-detail empty-state">
+            No run selected yet.
+          </div>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <section class="copyleft-panel" aria-labelledby="copyleft-title">
+          <div>
+            <p class="eyebrow">CopyLeft</p>
+            <h2 id="copyleft-title">Fork it, remix it, keep it moving.</h2>
+            <p class="subtitle footer-copy">
+              A brighter local dashboard for late-night runs, quicker triage, and cleaner handoffs.
+            </p>
+          </div>
+          <p class="copyleft-signoff">CopyLeft, but created by Alejandro Traver.</p>
+        </section>
+      </footer>
+    </div>
+
+    <div id="settings-modal" class="modal-shell hidden" aria-hidden="true">
+      <div class="modal-backdrop" data-action="close-settings"></div>
+      <section
+        class="settings-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-modal-title"
+      >
+        <div class="settings-modal-header">
+          <div>
+            <p class="eyebrow">Local Checks</p>
+            <h2 id="settings-modal-title">Pit Stop</h2>
+            <p class="settings-modal-copy">
+              Quick environment checks for the current dashboard process.
+            </p>
+          </div>
+          <button id="close-settings-button" type="button">Close</button>
+        </div>
+
+        <div class="settings-card-list">
+          <article class="settings-card">
+            <span class="settings-card-label">GitHub Auth</span>
+            <span id="github-token-indicator" class="status-pill neutral">Checking...</span>
+            <p id="github-token-indicator-copy" class="settings-card-copy"></p>
+          </article>
+
+          <article class="settings-card">
+            <span class="settings-card-label">Codex CLI</span>
+            <span id="codex-cli-indicator" class="status-pill neutral">Checking...</span>
+            <p id="codex-cli-indicator-copy" class="settings-card-copy"></p>
+          </article>
+        </div>
+      </section>
+    </div>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>

@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Kiubo Arcade Ops logo</title>
+  <desc id="desc">A neon gamer-inspired K emblem inside a futuristic rounded square.</desc>
+  <defs>
+    <linearGradient id="frame" x1="28" y1="24" x2="224" y2="228" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#20d7ff" />
+      <stop offset="1" stop-color="#9bff6d" />
+    </linearGradient>
+    <linearGradient id="panel" x1="32" y1="32" x2="224" y2="224" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0b1933" />
+      <stop offset="1" stop-color="#030814" />
+    </linearGradient>
+    <linearGradient id="k-stroke" x1="88" y1="72" x2="178" y2="186" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9bff6d" />
+      <stop offset="0.45" stop-color="#69f5d3" />
+      <stop offset="1" stop-color="#20d7ff" />
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="#20d7ff" flood-opacity="0.35" />
+    </filter>
+  </defs>
+
+  <rect x="20" y="20" width="216" height="216" rx="56" fill="url(#panel)" />
+  <rect x="20" y="20" width="216" height="216" rx="56" fill="none" stroke="url(#frame)" stroke-width="10" />
+
+  <path
+    d="M64 72H84V92H104V112H84V132H64V112H44V92H64Z"
+    fill="#08172f"
+    stroke="#69f5d3"
+    stroke-linejoin="round"
+    stroke-width="8"
+  />
+
+  <circle cx="180" cy="86" r="12" fill="#20d7ff" />
+  <circle cx="206" cy="112" r="10" fill="#9bff6d" />
+  <circle cx="168" cy="126" r="8" fill="#69f5d3" />
+
+  <path
+    d="M62 194L94 162H194"
+    fill="none"
+    stroke="#16365d"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="10"
+  />
+
+  <g fill="none" filter="url(#glow)" stroke="url(#k-stroke)" stroke-linecap="round" stroke-linejoin="round" stroke-width="18">
+    <path d="M96 78V178" />
+    <path d="M102 128L170 76" />
+    <path d="M102 130L176 182" />
+  </g>
+</svg>
