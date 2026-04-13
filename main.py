@@ -21,37 +21,41 @@ from overnight_runner.publishers import GitHubPullRequestPublisher
 from overnight_runner.runner import TaskRunner
 
 
+def _default_backlog_path(repo_root: Path) -> Path:
+    return repo_root / "automation" / "backlog" / "tasks.json"
+
+
+def _default_runs_root(repo_root: Path) -> Path:
+    return repo_root / "automation" / "runs"
+
+
 def _default_worktrees_root(repo_root: Path) -> Path:
     return Path(tempfile.gettempdir()) / "kiubo-automation-worktrees" / repo_root.name
 
 
 def parse_args() -> argparse.Namespace:
-    default_backlog = REPO_ROOT / "backlog" / "tasks.json"
-    default_runs_root = REPO_ROOT / "runs"
-    default_worktrees_root = _default_worktrees_root(REPO_ROOT)
-
     parser = argparse.ArgumentParser(
         description="Run backlog tasks in reusable git task worktrees."
     )
     parser.add_argument(
         "--repo-root",
-        default=str(REPO_ROOT),
-        help="Path to the git repository root.",
+        default=str(Path.cwd()),
+        help="Path to the target git repository root.",
     )
     parser.add_argument(
         "--backlog",
-        default=str(default_backlog),
-        help="Path to the backlog JSON file.",
+        default=None,
+        help="Path to the backlog JSON file. Defaults to <repo-root>/automation/backlog/tasks.json.",
     )
     parser.add_argument(
         "--runs-root",
-        default=str(default_runs_root),
-        help="Directory where run logs and artifacts are stored.",
+        default=None,
+        help="Directory where run logs and artifacts are stored. Defaults to <repo-root>/automation/runs.",
     )
     parser.add_argument(
         "--worktrees-root",
-        default=str(default_worktrees_root),
-        help="Directory where reusable git task worktrees are created.",
+        default=None,
+        help="Directory where reusable git task worktrees are created. Defaults to /tmp/kiubo-automation-worktrees/<repo-name>.",
     )
     parser.add_argument(
         "--task-id",
@@ -81,7 +85,16 @@ def parse_args() -> argparse.Namespace:
         choices=["branch", "code", "tests", "pull_request"],
         help="Stage to resume from when --resume-run-id is provided.",
     )
-    return parser.parse_args()
+
+    parsed = parser.parse_args()
+    repo_root = Path(parsed.repo_root).expanduser().resolve()
+    if parsed.backlog is None:
+        parsed.backlog = str(_default_backlog_path(repo_root))
+    if parsed.runs_root is None:
+        parsed.runs_root = str(_default_runs_root(repo_root))
+    if parsed.worktrees_root is None:
+        parsed.worktrees_root = str(_default_worktrees_root(repo_root))
+    return parsed
 
 
 def _select_tasks(tasks, task_ids, max_tasks):

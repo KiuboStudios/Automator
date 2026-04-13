@@ -1,6 +1,6 @@
 # Overnight Task Runner
 
-This folder contains a local overnight task runner with a local dashboard.
+This repository contains the reusable overnight task runner engine and local dashboard.
 
 ## Current scope
 
@@ -9,17 +9,27 @@ This folder contains a local overnight task runner with a local dashboard.
 - Run Codex locally to implement each task inside its worktree.
 - Create an incremental git commit after each executor attempt that produces changes.
 - Run task-specific tests with up to 2 retries when a validation command is configured.
-- Persist task logs and run summaries under `runs/`.
+- Persist task logs and run summaries under `<repo-root>/automation/runs/`.
 - Keep task worktrees outside the repository by default so you can inspect and resume them after a run.
 - Push task branches and create draft GitHub pull requests automatically when validation passes.
 - Bootstrap each task branch from the selected base branch the first time, then keep reusing that task branch for later retries.
+
+## Runtime state
+
+- Runtime state is intentionally kept in the target repository, not in `Automator`.
+- Default paths are:
+  - backlog: `<repo-root>/automation/backlog/tasks.json`
+  - attachments: `<repo-root>/automation/backlog/attachments/`
+  - runs: `<repo-root>/automation/runs/`
+  - worktrees: `/tmp/kiubo-automation-worktrees/<repo-name>`
+- The tracked sample backlog in this repo is `backlog/tasks.example.json`.
 
 ## Folder structure
 
 ```text
 Automator/
   backlog/
-    tasks.json
+    tasks.example.json
   overnight_runner/
     backlog.py
     git_ops.py
@@ -61,7 +71,7 @@ export CODEX_ATTACHMENT_GUARD=off   # disable attachment guard checks
 ## Run the runner
 
 ```bash
-python3 main.py
+python3 main.py --repo-root /absolute/path/to/target-repo
 ```
 
 Runs always keep their worktrees and always try to publish a pull request when validation passes.
@@ -75,7 +85,7 @@ Optional flags:
 ## Run the local dashboard
 
 ```bash
-python3 dashboard.py
+python3 dashboard.py --repo-root /absolute/path/to/target-repo
 ```
 
 Then open:
@@ -95,6 +105,6 @@ The dashboard lets you:
 - inspect runner stdout/stderr plus per-task event and test logs
 - follow the pipeline stages from `Backlog` through `Review`
 
-Tasks moved to `Done` stay in `backlog/tasks.json`, but new runs skip them until you move them back into the active backlog.
+Tasks moved to `Done` stay in the target backlog file, but new runs skip them until you move them back into the active backlog.
 
 `test_command` is optional. If you leave it empty, the runner will skip validation for that task and record that tests were skipped.

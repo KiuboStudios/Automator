@@ -400,7 +400,7 @@ class OvernightRunnerTests(unittest.TestCase):
             self.assertEqual(result, 1)
 
     def test_project_backlog_sample_is_self_contained(self) -> None:
-        backlog_path = Path(__file__).resolve().parents[1] / "backlog" / "tasks.json"
+        backlog_path = Path(__file__).resolve().parents[1] / "backlog" / "tasks.example.json"
 
         document = load_backlog_document(backlog_path)
 

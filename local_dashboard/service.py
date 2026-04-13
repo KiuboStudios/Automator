@@ -531,6 +531,7 @@ class DashboardService:
         backlog_path: Path,
         runs_root: Path,
         worktrees_root: Path,
+        runner_entrypoint: Optional[Path] = None,
     ) -> None:
         self.repo_root = repo_root
         self.backlog_path = backlog_path
@@ -538,6 +539,8 @@ class DashboardService:
         self.attachments_root = self.backlog_root / "attachments"
         self.runs_root = runs_root
         self.worktrees_root = worktrees_root
+        default_runner_entrypoint = Path(__file__).resolve().parents[1] / "main.py"
+        self.runner_entrypoint = (runner_entrypoint or default_runner_entrypoint).resolve()
         self.git_repo = GitRepository(repo_root)
         self._active_runs: Dict[str, ActiveRun] = {}
         self._lock = threading.Lock()
@@ -555,6 +558,15 @@ class DashboardService:
                 "Commit or stash your local changes first."
             )
         return None
+
+    def _runner_entrypoint_guard(self) -> Optional[str]:
+        if self.runner_entrypoint.exists():
+            return None
+        return (
+            "Automation runner entrypoint is missing at "
+            f"`{self.runner_entrypoint}`. Restart the dashboard with "
+            "`--runner-entrypoint /absolute/path/to/main.py`."
+        )
 
     def _branch_cleanup_guard(self) -> Optional[str]:
         with self._lock:
@@ -607,6 +619,7 @@ class DashboardService:
         codex_cli_available = bool(codex_cli_path)
         current_branch = self.git_repo.current_branch()
         development_flow_error = self._development_flow_guard()
+        runner_entrypoint_error = self._runner_entrypoint_guard()
         branch_cleanup_error = self._branch_cleanup_guard()
         merged_task_branch_names = self._merged_task_branch_names()
         latest_run_ids = self._list_run_ids(limit=1)
@@ -648,6 +661,8 @@ class DashboardService:
         launch_blockers = []
         if development_flow_error:
             launch_blockers.append(development_flow_error)
+        if runner_entrypoint_error:
+            launch_blockers.append(runner_entrypoint_error)
         if not github_token_available:
             launch_blockers.append(
                 "The dashboard process does not currently have GITHUB_TOKEN loaded."
@@ -1010,6 +1025,10 @@ class DashboardService:
         if development_flow_error:
             raise ValueError(development_flow_error)
 
+        runner_entrypoint_error = self._runner_entrypoint_guard()
+        if runner_entrypoint_error:
+            raise ValueError(runner_entrypoint_error)
+
         if not os.environ.get("GITHUB_TOKEN", "").strip():
             raise ValueError(
                 "The dashboard process does not have GITHUB_TOKEN in its environment. "
@@ -1038,7 +1057,7 @@ class DashboardService:
 
         command = [
             sys.executable,
-            str(self.repo_root / "main.py"),
+            str(self.runner_entrypoint),
             "--repo-root",
             str(self.repo_root),
             "--backlog",
@@ -1165,6 +1184,10 @@ class DashboardService:
                 "Export it and restart `python3 dashboard.py` before resuming a task."
             )
 
+        runner_entrypoint_error = self._runner_entrypoint_guard()
+        if runner_entrypoint_error:
+            raise ValueError(runner_entrypoint_error)
+
         resume_error = self._resume_guard(run_id, task_id)
         if resume_error:
             raise ValueError(resume_error)
@@ -1220,7 +1243,7 @@ class DashboardService:
         _append_jsonl(task_root / "resume-requests.jsonl", resume_request)
         command = [
             sys.executable,
-            str(self.repo_root / "main.py"),
+            str(self.runner_entrypoint),
             "--repo-root",
             str(self.repo_root),
             "--backlog",

@@ -27,11 +27,10 @@ htmlcov/
 .vscode/
 .idea/
 
-# Local run artifacts (keep placeholder directory tracked)
-runs/*
-!runs/.gitkeep
-
-# User-uploaded local dashboard attachments
+# Runtime state should live in the target repo
+runs/
+backlog/tasks.json
+backlog/*.local.json
 backlog/attachments/
 
 # Optional in-repo worktrees path
