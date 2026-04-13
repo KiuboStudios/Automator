@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Callable, Optional, Tuple
 from urllib.parse import unquote, urlparse
 
-from automation.local_dashboard.service import DashboardService
+from local_dashboard.service import DashboardService
 
 
 def _static_file(path: Path, content_type: str) -> Tuple[bytes, str]:

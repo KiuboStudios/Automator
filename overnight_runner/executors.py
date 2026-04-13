@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from automation.overnight_runner.models import (
+from overnight_runner.models import (
     EventLogger,
     TaskAttachment,
     TaskDefinition,

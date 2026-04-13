@@ -6,8 +6,8 @@ from pathlib import Path
 from urllib import error, request
 from urllib.parse import urlparse
 
-from automation.overnight_runner.git_ops import GitCommandError, GitRepository
-from automation.overnight_runner.models import EventLogger, PullRequestResult, TaskDefinition
+from overnight_runner.git_ops import GitCommandError, GitRepository
+from overnight_runner.models import EventLogger, PullRequestResult, TaskDefinition
 
 
 class NoopPullRequestPublisher:

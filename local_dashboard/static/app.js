@@ -29,7 +29,7 @@ async function request(path, options = {}) {
     const text = await response.text();
     if (response.status === 404 && path.includes("/reviewed")) {
       throw new Error(
-        "The dashboard server needs a restart to pick up the new Done action. Restart `python3 automation/dashboard.py` and try again."
+        "The dashboard server needs a restart to pick up the new Done action. Restart `python3 dashboard.py` and try again."
       );
     }
     throw new Error(text || `Request failed: ${response.status}`);
@@ -301,7 +301,7 @@ function renderOverview(overview) {
     tokenIndicator.textContent = "Restart dashboard after exporting token";
     tokenIndicator.className = "status-pill warning";
     tokenIndicatorCopy.textContent =
-      "Export GITHUB_TOKEN first, then restart `python3 automation/dashboard.py`.";
+      "Export GITHUB_TOKEN first, then restart `python3 dashboard.py`.";
   }
 
   const codexIndicator = document.getElementById("codex-cli-indicator");

@@ -5,12 +5,12 @@ import sys
 import tempfile
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from automation.local_dashboard.server import create_server
-from automation.local_dashboard.service import DashboardService
+from local_dashboard.server import create_server
+from local_dashboard.service import DashboardService
 
 
 def _default_worktrees_root(repo_root: Path) -> Path:
@@ -18,8 +18,8 @@ def _default_worktrees_root(repo_root: Path) -> Path:
 
 
 def parse_args() -> argparse.Namespace:
-    default_backlog = REPO_ROOT / "automation" / "backlog" / "tasks.json"
-    default_runs_root = REPO_ROOT / "automation" / "runs"
+    default_backlog = REPO_ROOT / "backlog" / "tasks.json"
+    default_runs_root = REPO_ROOT / "runs"
     default_worktrees_root = _default_worktrees_root(REPO_ROOT)
 
     parser = argparse.ArgumentParser(description="Run the local automation dashboard.")

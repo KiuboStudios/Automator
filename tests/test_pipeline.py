@@ -8,17 +8,17 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-import automation.main as automation_main
-from automation.overnight_runner.backlog import load_backlog, load_backlog_document
-from automation.overnight_runner.executors import CodexTaskExecutor, _build_codex_prompt, resolve_codex_binary
-from automation.overnight_runner.git_ops import GitRepository
-from automation.overnight_runner.models import (
+import main as automation_main
+from overnight_runner.backlog import load_backlog, load_backlog_document
+from overnight_runner.executors import CodexTaskExecutor, _build_codex_prompt, resolve_codex_binary
+from overnight_runner.git_ops import GitRepository
+from overnight_runner.models import (
     ExecutorConfig,
     PullRequestResult,
     TaskAttachment,
     TaskDefinition,
 )
-from automation.overnight_runner.runner import (
+from overnight_runner.runner import (
     NoopPullRequestPublisher,
     TaskRunner,
 )
@@ -58,11 +58,11 @@ class OvernightRunnerTests(unittest.TestCase):
 
             with patch.dict("os.environ", {}, clear=True):
                 with patch(
-                    "automation.overnight_runner.executors.shutil.which",
+                    "overnight_runner.executors.shutil.which",
                     return_value=None,
                 ):
                     with patch(
-                        "automation.overnight_runner.executors._COMMON_CODEX_BINARIES",
+                        "overnight_runner.executors._COMMON_CODEX_BINARIES",
                         (str(fake_codex),),
                     ):
                         resolved = resolve_codex_binary()
@@ -173,7 +173,7 @@ class OvernightRunnerTests(unittest.TestCase):
 
             with patch.dict("os.environ", {}, clear=True):
                 executor = CodexTaskExecutor(codex_bin="/opt/homebrew/bin/codex")
-                with patch("automation.overnight_runner.executors.subprocess.run") as run_mock:
+                with patch("overnight_runner.executors.subprocess.run") as run_mock:
                     run_mock.return_value = subprocess.CompletedProcess(
                         args=[],
                         returncode=0,
@@ -233,7 +233,7 @@ class OvernightRunnerTests(unittest.TestCase):
 
             with patch.dict("os.environ", {}, clear=True):
                 executor = CodexTaskExecutor(codex_bin="/opt/homebrew/bin/codex")
-                with patch("automation.overnight_runner.executors.subprocess.run") as run_mock:
+                with patch("overnight_runner.executors.subprocess.run") as run_mock:
                     run_mock.return_value = subprocess.CompletedProcess(
                         args=[],
                         returncode=0,
@@ -291,7 +291,7 @@ class OvernightRunnerTests(unittest.TestCase):
 
             with patch.dict("os.environ", {"CODEX_ATTACHMENT_GUARD": "fail"}, clear=True):
                 executor = CodexTaskExecutor(codex_bin="/opt/homebrew/bin/codex")
-                with patch("automation.overnight_runner.executors.subprocess.run") as run_mock:
+                with patch("overnight_runner.executors.subprocess.run") as run_mock:
                     run_mock.return_value = subprocess.CompletedProcess(
                         args=[],
                         returncode=0,
@@ -340,7 +340,7 @@ class OvernightRunnerTests(unittest.TestCase):
 
             with patch.dict("os.environ", {}, clear=True):
                 executor = CodexTaskExecutor(codex_bin="/opt/homebrew/bin/codex")
-                with patch("automation.overnight_runner.executors.subprocess.run") as run_mock:
+                with patch("overnight_runner.executors.subprocess.run") as run_mock:
                     with self.assertRaises(RuntimeError):
                         executor.execute(
                             task=task,

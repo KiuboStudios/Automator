@@ -8,8 +8,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from automation.local_dashboard.service import DashboardService
-from automation.overnight_runner.git_ops import GitWorktree
+from local_dashboard.service import DashboardService
+from overnight_runner.git_ops import GitWorktree
 
 
 class DashboardServiceTests(unittest.TestCase):
@@ -121,7 +121,7 @@ class DashboardServiceTests(unittest.TestCase):
                     ):
                         with patch.dict(os.environ, {"GITHUB_TOKEN": "test-token"}, clear=True):
                             with patch(
-                                "automation.local_dashboard.service.resolve_codex_binary",
+                                "local_dashboard.service.resolve_codex_binary",
                                 return_value="/opt/homebrew/bin/codex",
                             ):
                                 overview = service.get_overview()
@@ -186,7 +186,7 @@ class DashboardServiceTests(unittest.TestCase):
                     with patch.object(service.git_repo, "list_merged_branches", return_value=["main"]):
                         with patch.dict(os.environ, {"GITHUB_TOKEN": "test-token"}, clear=True):
                             with patch(
-                                "automation.local_dashboard.service.resolve_codex_binary",
+                                "local_dashboard.service.resolve_codex_binary",
                                 return_value="/opt/homebrew/bin/codex",
                             ):
                                 with patch.object(service, "_list_run_ids", return_value=[run_id]):
@@ -656,7 +656,7 @@ class DashboardServiceTests(unittest.TestCase):
                     return_value={"tasks": [{"id": "demo-task", "title": "Demo task"}]},
                 ):
                     with patch(
-                        "automation.local_dashboard.service.subprocess.Popen",
+                        "local_dashboard.service.subprocess.Popen",
                         return_value=process,
                     ) as popen:
                         resumed_run = service.resume_run_task(run_id=run_id, task_id="demo-task")
@@ -702,7 +702,7 @@ class DashboardServiceTests(unittest.TestCase):
             with patch.object(service.git_repo, "current_branch", return_value="main"):
                 with patch.object(service.git_repo, "has_uncommitted_changes", return_value=False):
                     with patch.dict(os.environ, {}, clear=True):
-                        with self.assertRaisesRegex(ValueError, "restart `python3 automation/dashboard.py`"):
+                        with self.assertRaisesRegex(ValueError, "restart `python3 dashboard.py`"):
                             service.start_run(task_ids=["demo-task"])
 
     def test_upsert_and_delete_task_updates_backlog(self) -> None:

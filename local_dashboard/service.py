@@ -16,14 +16,14 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 from uuid import uuid4
 
-from automation.overnight_runner.backlog import (
+from overnight_runner.backlog import (
     build_task_definition,
     load_backlog_document,
     save_backlog_document,
 )
-from automation.overnight_runner.executors import resolve_codex_binary
-from automation.overnight_runner.git_ops import GitCommandError, GitRepository, redact_sensitive_text
-from automation.overnight_runner.runner import (
+from overnight_runner.executors import resolve_codex_binary
+from overnight_runner.git_ops import GitCommandError, GitRepository, redact_sensitive_text
+from overnight_runner.runner import (
     TASK_BRANCH_PREFIX,
     create_run_id,
     derive_task_documentation,
@@ -1013,7 +1013,7 @@ class DashboardService:
         if not os.environ.get("GITHUB_TOKEN", "").strip():
             raise ValueError(
                 "The dashboard process does not have GITHUB_TOKEN in its environment. "
-                "Export it and restart `python3 automation/dashboard.py` before launching a run."
+                "Export it and restart `python3 dashboard.py` before launching a run."
             )
 
         backlog = self.get_backlog()
@@ -1038,7 +1038,7 @@ class DashboardService:
 
         command = [
             sys.executable,
-            str(self.repo_root / "automation" / "main.py"),
+            str(self.repo_root / "main.py"),
             "--repo-root",
             str(self.repo_root),
             "--backlog",
@@ -1162,7 +1162,7 @@ class DashboardService:
         if not os.environ.get("GITHUB_TOKEN", "").strip():
             raise ValueError(
                 "The dashboard process does not have GITHUB_TOKEN in its environment. "
-                "Export it and restart `python3 automation/dashboard.py` before resuming a task."
+                "Export it and restart `python3 dashboard.py` before resuming a task."
             )
 
         resume_error = self._resume_guard(run_id, task_id)
@@ -1220,7 +1220,7 @@ class DashboardService:
         _append_jsonl(task_root / "resume-requests.jsonl", resume_request)
         command = [
             sys.executable,
-            str(self.repo_root / "automation" / "main.py"),
+            str(self.repo_root / "main.py"),
             "--repo-root",
             str(self.repo_root),
             "--backlog",

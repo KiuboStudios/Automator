@@ -9,7 +9,7 @@ This folder contains a local overnight task runner with a local dashboard.
 - Run Codex locally to implement each task inside its worktree.
 - Create an incremental git commit after each executor attempt that produces changes.
 - Run task-specific tests with up to 2 retries when a validation command is configured.
-- Persist task logs and run summaries under `automation/runs/`.
+- Persist task logs and run summaries under `runs/`.
 - Keep task worktrees outside the repository by default so you can inspect and resume them after a run.
 - Push task branches and create draft GitHub pull requests automatically when validation passes.
 - Bootstrap each task branch from the selected base branch the first time, then keep reusing that task branch for later retries.
@@ -17,7 +17,7 @@ This folder contains a local overnight task runner with a local dashboard.
 ## Folder structure
 
 ```text
-automation/
+Automator/
   backlog/
     tasks.json
   overnight_runner/
@@ -25,9 +25,11 @@ automation/
     git_ops.py
     models.py
     runner.py
+  local_dashboard/
   tests/
     test_pipeline.py
   main.py
+  dashboard.py
   README.md
 ```
 
@@ -46,7 +48,7 @@ Use a fine-grained personal access token with repository access and at least:
 
 The runner also expects the local `codex` CLI to be installed and available in `PATH`.
 
-If you launch the local dashboard, export `GITHUB_TOKEN` before starting it. If you change the token later, restart `python3 automation/dashboard.py` so new runs inherit the updated environment.
+If you launch the local dashboard, export `GITHUB_TOKEN` before starting it. If you change the token later, restart `python3 dashboard.py` so new runs inherit the updated environment.
 
 Attachment diagnostics are enabled by default in log mode. Control strictness with:
 
@@ -59,7 +61,7 @@ export CODEX_ATTACHMENT_GUARD=off   # disable attachment guard checks
 ## Run the runner
 
 ```bash
-python3 automation/main.py
+python3 main.py
 ```
 
 Runs always keep their worktrees and always try to publish a pull request when validation passes.
@@ -73,7 +75,7 @@ Optional flags:
 ## Run the local dashboard
 
 ```bash
-python3 automation/dashboard.py
+python3 dashboard.py
 ```
 
 Then open:
@@ -93,6 +95,6 @@ The dashboard lets you:
 - inspect runner stdout/stderr plus per-task event and test logs
 - follow the pipeline stages from `Backlog` through `Review`
 
-Tasks moved to `Done` stay in `automation/backlog/tasks.json`, but new runs skip them until you move them back into the active backlog.
+Tasks moved to `Done` stay in `backlog/tasks.json`, but new runs skip them until you move them back into the active backlog.
 
 `test_command` is optional. If you leave it empty, the runner will skip validation for that task and record that tests were skipped.

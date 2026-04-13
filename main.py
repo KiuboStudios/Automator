@@ -6,19 +6,19 @@ import sys
 import tempfile
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from automation.overnight_runner.backlog import load_backlog
-from automation.overnight_runner.executors import (
+from overnight_runner.backlog import load_backlog
+from overnight_runner.executors import (
     CodexTaskExecutor,
     DelegatingTaskExecutor,
     NoopTaskExecutor,
 )
-from automation.overnight_runner.git_ops import GitRepository
-from automation.overnight_runner.publishers import GitHubPullRequestPublisher
-from automation.overnight_runner.runner import TaskRunner
+from overnight_runner.git_ops import GitRepository
+from overnight_runner.publishers import GitHubPullRequestPublisher
+from overnight_runner.runner import TaskRunner
 
 
 def _default_worktrees_root(repo_root: Path) -> Path:
@@ -26,8 +26,8 @@ def _default_worktrees_root(repo_root: Path) -> Path:
 
 
 def parse_args() -> argparse.Namespace:
-    default_backlog = REPO_ROOT / "automation" / "backlog" / "tasks.json"
-    default_runs_root = REPO_ROOT / "automation" / "runs"
+    default_backlog = REPO_ROOT / "backlog" / "tasks.json"
+    default_runs_root = REPO_ROOT / "runs"
     default_worktrees_root = _default_worktrees_root(REPO_ROOT)
 
     parser = argparse.ArgumentParser(

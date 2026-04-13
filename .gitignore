@@ -1,0 +1,38 @@
+# macOS
+.DS_Store
+
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments and local env files
+.venv/
+venv/
+env/
+ENV/
+.python-version
+.env
+.env.*
+
+# Test and lint caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Editors
+.vscode/
+.idea/
+
+# Local run artifacts (keep placeholder directory tracked)
+runs/*
+!runs/.gitkeep
+
+# User-uploaded local dashboard attachments
+backlog/attachments/
+
+# Optional in-repo worktrees path
+worktrees/

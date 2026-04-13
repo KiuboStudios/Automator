@@ -8,15 +8,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-from automation.overnight_runner.executors import NoopTaskExecutor
-from automation.overnight_runner.git_ops import GitRepository, redact_sensitive_text
-from automation.overnight_runner.models import (
+from overnight_runner.executors import NoopTaskExecutor
+from overnight_runner.git_ops import GitRepository, redact_sensitive_text
+from overnight_runner.models import (
     PullRequestPublisher,
     TaskDefinition,
     TaskExecutor,
     TaskResult,
 )
-from automation.overnight_runner.publishers import NoopPullRequestPublisher
+from overnight_runner.publishers import NoopPullRequestPublisher
 
 TASK_BRANCH_PREFIX = "automator"
 

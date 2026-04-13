@@ -19,7 +19,8 @@
         "type": "codex",
         "prompt": ""
       },
-      "test_command": []
+      "test_command": [],
+      "reviewed": true
     }
   ]
 }
