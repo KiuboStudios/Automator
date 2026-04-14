@@ -29,10 +29,10 @@ htmlcov/
 
 # Runtime state should live in the target repo
 runs/
-automation/backlog/
-backlog/tasks.json
-backlog/*.local.json
-backlog/attachments/
+tasks.json
+tasks*.local.json
+
+attachments/
 
 # Optional in-repo worktrees path
 worktrees/

@@ -22,7 +22,7 @@ from overnight_runner.runner import TaskRunner
 
 
 def _default_backlog_path(repo_root: Path) -> Path:
-    return repo_root / "automation" / "backlog" / "tasks.json"
+    return repo_root / "tasks.json"
 
 
 def _default_runs_root(repo_root: Path) -> Path:
@@ -45,7 +45,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--backlog",
         default=None,
-        help="Path to the backlog JSON file. Defaults to <repo-root>/automation/backlog/tasks.json.",
+        help="Path to the backlog JSON file. Defaults to <repo-root>/tasks.json.",
     )
     parser.add_argument(
         "--runs-root",
