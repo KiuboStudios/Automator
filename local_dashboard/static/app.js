@@ -163,7 +163,10 @@ function renderRunnerStatus(overview) {
       "runner-launch-secondary",
       joinSummary([
         overview.current_branch ? `branch: ${overview.current_branch}` : "",
-        overview.dirty_worktree ? "repo has local changes" : "repo clean",
+        overview.dirty_worktree ? "current repo has local changes" : "current repo clean",
+        overview.configured_repositories_ready
+          ? "configured repos on main + clean"
+          : "configured repos need main + clean",
         overview.github_token_available ? "GitHub token ready" : "GitHub token missing",
         overview.codex_cli_available ? "Codex CLI ready" : "Codex CLI missing",
       ])
@@ -283,12 +286,25 @@ function renderOverview(overview) {
   state.overview = overview;
   document.getElementById("repo-root").textContent = overview.repo_root;
   const indicator = document.getElementById("dirty-indicator");
-  if (overview.dirty_worktree) {
+  if (overview.repo_clean_badge) {
+    indicator.textContent = "Repo Clean";
+    indicator.className = "status-pill success";
+    indicator.title =
+      "Current repo is clean and all configured repositories are on `main` with clean worktrees.";
+  } else if (overview.dirty_worktree) {
     indicator.textContent = "Repo has uncommitted changes";
     indicator.className = "status-pill warning";
+    indicator.title = overview.repo_clean_badge_error || "Current repo has uncommitted changes.";
+  } else if (!overview.configured_repositories_ready) {
+    indicator.textContent = "Configured repos need main + clean";
+    indicator.className = "status-pill warning";
+    indicator.title =
+      overview.repo_clean_badge_error ||
+      "At least one configured repository is not on `main` or has uncommitted changes.";
   } else {
-    indicator.textContent = "Repo clean";
-    indicator.className = "status-pill success";
+    indicator.textContent = "Repo checks pending";
+    indicator.className = "status-pill neutral";
+    indicator.title = overview.repo_clean_badge_error || "Repository checks are still in progress.";
   }
 
   const tokenIndicator = document.getElementById("github-token-indicator");

@@ -158,6 +158,10 @@ class DashboardServiceTests(unittest.TestCase):
 
             self.assertFalse(overview["dirty_worktree"])
             self.assertEqual(overview["current_branch"], "main")
+            self.assertTrue(overview["current_repo_clean_worktree"])
+            self.assertTrue(overview["configured_repositories_ready"])
+            self.assertTrue(overview["repo_clean_badge"])
+            self.assertEqual(overview["repo_clean_badge_error"], "")
             self.assertTrue(overview["development_flow_allowed"])
             self.assertTrue(overview["github_token_available"])
             self.assertTrue(overview["codex_cli_available"])
@@ -231,6 +235,66 @@ class DashboardServiceTests(unittest.TestCase):
             self.assertEqual(overview["latest_run"]["run_id"], run_id)
             self.assertEqual(overview["current_activity"]["task_id"], "demo-task")
             self.assertEqual(overview["current_activity"]["summary"], "Running validation")
+
+    def test_get_overview_repo_clean_badge_requires_current_repo_clean(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            self._init_git_repo(temp_path)
+            service = DashboardService(
+                repo_root=temp_path,
+                backlog_path=temp_path / "backlog.json",
+                runs_root=temp_path / "runs",
+                worktrees_root=temp_path / "worktrees",
+            )
+
+            with patch.object(service.git_repo, "current_branch", return_value="main"):
+                with patch.object(service.git_repo, "has_uncommitted_changes", return_value=True):
+                    with patch.object(service.git_repo, "list_merged_branches", return_value=["main"]):
+                        overview = service.get_overview()
+
+            self.assertTrue(overview["configured_repositories_ready"])
+            self.assertFalse(overview["repo_clean_badge"])
+            self.assertIn("Current repo has uncommitted changes.", overview["repo_clean_badge_error"])
+
+    def test_get_overview_repo_clean_badge_requires_configured_repositories_ready(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            self._init_git_repo(temp_path)
+            configured_repo = self._init_git_repo(temp_path / "repo-target")
+            subprocess.run(
+                ["git", "checkout", "-b", "feature/test"],
+                cwd=configured_repo,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            backlog_path = temp_path / "backlog.json"
+            backlog_path.write_text(
+                json.dumps(
+                    {
+                        "defaults": {"repository_id": "target"},
+                        "repositories": [{"id": "target", "path": str(configured_repo)}],
+                        "tasks": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            service = DashboardService(
+                repo_root=temp_path,
+                backlog_path=backlog_path,
+                runs_root=temp_path / "runs",
+                worktrees_root=temp_path / "worktrees",
+            )
+
+            with patch.object(service.git_repo, "current_branch", return_value="main"):
+                with patch.object(service.git_repo, "has_uncommitted_changes", return_value=False):
+                    with patch.object(service.git_repo, "list_merged_branches", return_value=["main"]):
+                        overview = service.get_overview()
+
+            self.assertTrue(overview["current_repo_clean_worktree"])
+            self.assertFalse(overview["configured_repositories_ready"])
+            self.assertFalse(overview["repo_clean_badge"])
+            self.assertIn("Current branch: `feature/test`", overview["repo_clean_badge_error"])
 
     def test_start_run_requires_main_branch(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

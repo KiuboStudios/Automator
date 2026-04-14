@@ -773,20 +773,35 @@ class DashboardService:
             for repository in repository_entries
         ]
         repository_ids = [repository["id"] for repository in repository_entries]
-        primary_repository = (
-            repository_health[0]
-            if repository_health
-            else {
-                "current_branch": "",
-                "dirty_worktree": False,
-            }
+        current_repo_health = self._repository_health(
+            repository_id="current",
+            repository_path=str(self.repo_root),
+            require_clean=False,
+            require_main_branch=False,
         )
         codex_cli_path = resolve_codex_binary() or ""
         github_token_available = bool(os.environ.get("GITHUB_TOKEN", "").strip())
         codex_cli_available = bool(codex_cli_path)
-        current_branch = str(primary_repository.get("current_branch") or "")
-        dirty_worktree = bool(primary_repository.get("dirty_worktree"))
+        current_branch = str(current_repo_health.get("current_branch") or "")
+        dirty_worktree = bool(current_repo_health.get("dirty_worktree"))
+        current_repo_is_git_repository = bool(current_repo_health.get("is_git_repository"))
         development_flow_error = self._development_flow_guard(repository_ids=repository_ids)
+        configured_repositories_ready = not bool(development_flow_error)
+        repo_clean_badge = (
+            current_repo_is_git_repository
+            and not dirty_worktree
+            and configured_repositories_ready
+        )
+        repo_clean_badge_reasons: List[str] = []
+        if not current_repo_is_git_repository:
+            repo_clean_badge_reasons.append(
+                str(current_repo_health.get("error") or "Current repo is not a valid git repository.")
+            )
+        elif dirty_worktree:
+            repo_clean_badge_reasons.append("Current repo has uncommitted changes.")
+        if development_flow_error:
+            repo_clean_badge_reasons.append(development_flow_error)
+        repo_clean_badge_error = " | ".join(reason for reason in repo_clean_badge_reasons if reason)
         runner_entrypoint_error = self._runner_entrypoint_guard()
         branch_cleanup_error = self._branch_cleanup_guard()
         merged_task_branch_names = self._merged_task_branch_names()
@@ -873,6 +888,11 @@ class DashboardService:
             "dashboard_accessible": True,
             "current_branch": current_branch,
             "dirty_worktree": dirty_worktree,
+            "current_repo_is_git_repository": current_repo_is_git_repository,
+            "current_repo_clean_worktree": current_repo_is_git_repository and not dirty_worktree,
+            "configured_repositories_ready": configured_repositories_ready,
+            "repo_clean_badge": repo_clean_badge,
+            "repo_clean_badge_error": repo_clean_badge_error,
             "development_flow_allowed": not bool(development_flow_error),
             "development_flow_error": development_flow_error or "",
             "repositories": repository_health,
