@@ -669,6 +669,7 @@ class DashboardService:
         document = load_backlog_document(self.backlog_path)
         repositories = self._repository_entries_from_document(document)
         repositories_by_id = {repository["id"]: repository for repository in repositories}
+        current_repo_root = self.repo_root.expanduser().resolve()
         errors: List[str] = []
         if repository_ids:
             allowed_ids = set(repository_ids)
@@ -682,11 +683,14 @@ class DashboardService:
             [
                 health["error"]
                 for health in (
+                    # The Automator control repository must be clean, but does not need to be on main.
                     self._repository_health(
                         repository_id=repository["id"],
                         repository_path=repository["path"],
                         require_clean=True,
-                        require_main_branch=True,
+                        require_main_branch=(
+                            Path(str(repository["path"])).expanduser().resolve() != current_repo_root
+                        ),
                     )
                     for repository in repositories
                 )

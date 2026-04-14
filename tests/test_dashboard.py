@@ -300,12 +300,20 @@ class DashboardServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             self._init_git_repo(temp_path)
+            configured_repo = self._init_git_repo(temp_path / "repo-target")
+            subprocess.run(
+                ["git", "checkout", "-b", "feature/test"],
+                cwd=configured_repo,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
             backlog_path = temp_path / "backlog.json"
             backlog_path.write_text(
                 json.dumps(
                     {
-                        "defaults": {"repository_id": "repo-main"},
-                        "repositories": [{"id": "repo-main", "path": str(temp_path)}],
+                        "defaults": {"repository_id": "target"},
+                        "repositories": [{"id": "target", "path": str(configured_repo)}],
                         "tasks": [
                             {
                                 "id": "demo-task",
@@ -324,9 +332,8 @@ class DashboardServiceTests(unittest.TestCase):
             )
 
             with patch.dict(os.environ, {"GITHUB_TOKEN": "test-token"}, clear=True):
-                with patch.object(service.git_repo, "current_branch", return_value="feature/test"):
-                    with self.assertRaisesRegex(ValueError, "Current branch: `feature/test`"):
-                        service.start_run(task_ids=["demo-task"])
+                with self.assertRaisesRegex(ValueError, "Current branch: `feature/test`"):
+                    service.start_run(task_ids=["demo-task"])
 
     def test_start_run_requires_clean_worktree(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
