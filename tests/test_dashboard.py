@@ -259,9 +259,10 @@ class DashboardServiceTests(unittest.TestCase):
                 worktrees_root=temp_path / "worktrees",
             )
 
-            with patch.object(service.git_repo, "current_branch", return_value="feature/test"):
-                with self.assertRaisesRegex(ValueError, "Current branch: `feature/test`"):
-                    service.start_run(task_ids=["demo-task"])
+            with patch.dict(os.environ, {"GITHUB_TOKEN": "test-token"}, clear=True):
+                with patch.object(service.git_repo, "current_branch", return_value="feature/test"):
+                    with self.assertRaisesRegex(ValueError, "Current branch: `feature/test`"):
+                        service.start_run(task_ids=["demo-task"])
 
     def test_start_run_requires_clean_worktree(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -290,10 +291,11 @@ class DashboardServiceTests(unittest.TestCase):
                 worktrees_root=temp_path / "worktrees",
             )
 
-            with patch.object(service.git_repo, "current_branch", return_value="main"):
-                with patch.object(service.git_repo, "has_uncommitted_changes", return_value=True):
-                    with self.assertRaisesRegex(ValueError, "clean working tree"):
-                        service.start_run(task_ids=["demo-task"])
+            with patch.dict(os.environ, {"GITHUB_TOKEN": "test-token"}, clear=True):
+                with patch.object(service.git_repo, "current_branch", return_value="main"):
+                    with patch.object(service.git_repo, "has_uncommitted_changes", return_value=True):
+                        with self.assertRaisesRegex(ValueError, "clean working tree"):
+                            service.start_run(task_ids=["demo-task"])
 
     def test_get_backlog_redacts_authorization_headers_in_failure_detail(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
