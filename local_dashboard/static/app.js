@@ -402,6 +402,26 @@ function repositories() {
   return Array.isArray(state.backlog.repositories) ? state.backlog.repositories : [];
 }
 
+function normalizePathForComparison(value) {
+  return String(value || "").trim().replace(/[\\/]+$/, "");
+}
+
+function isControlRepository(repository) {
+  if (String((repository && repository.id) || "").trim() === "default") {
+    return true;
+  }
+  const repoRoot = normalizePathForComparison(state.overview && state.overview.repo_root);
+  const repositoryPath = normalizePathForComparison(repository && repository.path);
+  if (!repoRoot || !repositoryPath) {
+    return false;
+  }
+  return repositoryPath === repoRoot;
+}
+
+function selectableRepositories() {
+  return repositories().filter((repository) => !isControlRepository(repository));
+}
+
 function repositoryById(repositoryId) {
   return repositories().find((repository) => repository.id === repositoryId) || null;
 }
@@ -719,17 +739,17 @@ function renderTaskList() {
 function renderRepositoryOptions(selectedRepositoryId = "") {
   const select = document.getElementById("task-repository-select");
   if (!select) {
-    return;
+    return "";
   }
-  const repositoryList = repositories();
-  const fallbackRepositoryId =
-    String((state.backlog.defaults && state.backlog.defaults.repository_id) || "").trim() ||
-    (repositoryList[0] && repositoryList[0].id) ||
-    "";
-  const resolvedSelection = selectedRepositoryId || fallbackRepositoryId;
+  const repositoryList = selectableRepositories();
+  const requestedSelection = String(selectedRepositoryId || "").trim();
+  const resolvedSelection = repositoryList.some((repository) => repository.id === requestedSelection)
+    ? requestedSelection
+    : "";
+  const placeholderSelected = resolvedSelection ? "" : "selected";
 
   select.innerHTML = [
-    `<option value="">Select a repository</option>`,
+    `<option value="" ${placeholderSelected}>Select a repository</option>`,
     ...repositoryList.map((repository) => {
       const selected = repository.id === resolvedSelection ? "selected" : "";
       return `<option value="${escapeHtml(repository.id)}" ${selected}>${escapeHtml(
@@ -737,6 +757,7 @@ function renderRepositoryOptions(selectedRepositoryId = "") {
       )}</option>`;
     }),
   ].join("");
+  return resolvedSelection;
 }
 
 function repositoryStatusPill(repository) {
@@ -950,11 +971,10 @@ function populateTaskForm(task = null) {
   state.currentTaskId = task ? task.id : null;
   fields.id.value = taskData.id || "";
   fields.title.value = taskData.title || "";
-  renderRepositoryOptions(taskRepositoryId(taskData));
-  fields.repository_id.value =
-    taskRepositoryId(taskData) ||
-    fields.repository_id.value ||
-    String((state.backlog.defaults && state.backlog.defaults.repository_id) || "").trim();
+  const resolvedRepositorySelection = renderRepositoryOptions(
+    taskRepositoryId(taskData) || fields.repository_id.value || ""
+  );
+  fields.repository_id.value = resolvedRepositorySelection;
   fields.description.value = taskData.description || "";
   fields.test_command.value = task ? taskCommand(task) : "";
   fields.base_branch.value = taskData.base_branch || state.backlog.defaults.base_branch || "main";
