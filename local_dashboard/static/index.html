@@ -142,6 +142,12 @@
               <input name="title" required placeholder="Example task" />
             </label>
             <label>
+              <span>Repository</span>
+              <select name="repository_id" id="task-repository-select" required>
+                <option value="">Select a repository</option>
+              </select>
+            </label>
+            <label>
               <span>Description</span>
               <textarea name="description" rows="3" placeholder="What should this task do?"></textarea>
             </label>
@@ -279,6 +285,29 @@
             <span class="settings-card-label">Codex CLI</span>
             <span id="codex-cli-indicator" class="status-pill neutral">Checking...</span>
             <p id="codex-cli-indicator-copy" class="settings-card-copy"></p>
+          </article>
+
+          <article class="settings-card">
+            <span class="settings-card-label">Repositories</span>
+            <p class="settings-card-copy">
+              Register repository paths used by backlog tasks. Paths must be git repos on `main` with a clean worktree.
+            </p>
+            <form id="repository-form" class="repository-form">
+              <label>
+                <span>Repository ID</span>
+                <input name="id" required placeholder="web-app" />
+              </label>
+              <label>
+                <span>Absolute Path</span>
+                <input name="path" required placeholder="/Users/you/projects/web-app" />
+              </label>
+              <div class="form-actions">
+                <button type="submit" class="primary">Save Repository</button>
+              </div>
+            </form>
+            <div id="repository-list" class="repository-list empty-state">
+              No repositories registered yet.
+            </div>
           </article>
         </div>
       </section>

@@ -6,6 +6,12 @@ from typing import Any, Dict, List, Protocol
 
 
 @dataclass(frozen=True)
+class RegisteredRepository:
+    id: str
+    path: str
+
+
+@dataclass(frozen=True)
 class ExecutorConfig:
     type: str = "codex"
     prompt: str = ""
@@ -32,6 +38,8 @@ class TaskDefinition:
     retry_limit: int
     executor: ExecutorConfig
     attachments: List[TaskAttachment] = field(default_factory=list)
+    repository_id: str = "default"
+    repository_path: str = ""
 
 
 @dataclass(frozen=True)
@@ -52,6 +60,8 @@ class TaskResult:
     summary_path: Path
     pull_request_status: str
     pull_request_url: str = ""
+    repository_id: str = "default"
+    repository_path: str = ""
     workflow_state_path: Path = field(default_factory=Path)
     resume_history_path: Path = field(default_factory=Path)
     workflow_state: Dict[str, Any] = field(default_factory=dict)

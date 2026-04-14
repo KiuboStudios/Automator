@@ -461,6 +461,39 @@ class OvernightRunnerTests(unittest.TestCase):
 
             self.assertEqual(tasks[0].test_command, [])
 
+    def test_load_backlog_resolves_registered_repository_for_each_task(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            repo_a = self._init_git_repo(temp_path / "repo-a")
+            repo_b = self._init_git_repo(temp_path / "repo-b")
+            backlog_path = temp_path / "tasks.json"
+            backlog_path.write_text(
+                json.dumps(
+                    {
+                        "defaults": {
+                            "repository_id": "repo-a",
+                        },
+                        "repositories": [
+                            {"id": "repo-a", "path": str(repo_a)},
+                            {"id": "repo-b", "path": str(repo_b)},
+                        ],
+                        "tasks": [
+                            {
+                                "id": "multi-repo-task",
+                                "title": "Runs on repo b",
+                                "repository_id": "repo-b",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            tasks = load_backlog(backlog_path, default_repo_root=temp_path)
+
+            self.assertEqual(tasks[0].repository_id, "repo-b")
+            self.assertEqual(tasks[0].repository_path, str(repo_b.resolve()))
+
     def test_load_backlog_skips_reviewed_tasks(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             backlog_path = Path(temp_dir) / "tasks.json"
@@ -675,6 +708,71 @@ class OvernightRunnerTests(unittest.TestCase):
                 "Reusing the existing task branch and worktree.",
                 second_results[0].log_path.read_text(encoding="utf-8"),
             )
+
+    def test_runner_uses_the_task_repository_in_multirepo_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            control_repo = self._init_git_repo(temp_path / "control-repo")
+            target_repo = self._init_git_repo(temp_path / "target-repo")
+            runs_root = temp_path / "runs"
+            worktrees_root = temp_path / "worktrees"
+
+            backlog_path = temp_path / "backlog.json"
+            backlog_path.write_text(
+                json.dumps(
+                    {
+                        "defaults": {
+                            "repository_id": "target",
+                            "base_branch": "main",
+                            "working_directory": ".",
+                            "retry_limit": 1,
+                            "executor": {"type": "noop"},
+                        },
+                        "repositories": [
+                            {"id": "control", "path": str(control_repo)},
+                            {"id": "target", "path": str(target_repo)},
+                        ],
+                        "tasks": [
+                            {
+                                "id": "target-task",
+                                "title": "Target task",
+                                "repository_id": "target",
+                                "test_command": [sys.executable, "-c", "print('ok')"],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            runner = TaskRunner(
+                repo_root=control_repo,
+                runs_root=runs_root,
+                worktrees_root=worktrees_root,
+                executor=FileWritingExecutor(),
+                pull_request_publisher=NoopPullRequestPublisher(),
+            )
+            results = runner.run(
+                load_backlog(backlog_path, default_repo_root=control_repo)
+            )
+
+            self.assertEqual(results[0].status, "passed")
+            target_ref = subprocess.run(
+                ["git", "show-ref", "--verify", "refs/heads/automator/target-task"],
+                cwd=target_repo,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            control_ref = subprocess.run(
+                ["git", "show-ref", "--verify", "refs/heads/automator/target-task"],
+                cwd=control_repo,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(target_ref.returncode, 0)
+            self.assertNotEqual(control_ref.returncode, 0)
 
     def test_runner_keeps_task_passed_when_pr_publishing_fails(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

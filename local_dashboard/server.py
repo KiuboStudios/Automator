@@ -51,6 +51,10 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/backlog":
                 self._send_json(self._service().get_backlog())
                 return
+            if parsed.path == "/api/repositories":
+                backlog = self._service().get_backlog()
+                self._send_json({"repositories": backlog.get("repositories", [])})
+                return
             if parsed.path == "/api/runs":
                 self._send_json(self._service().list_runs())
                 return
@@ -70,6 +74,10 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/tasks":
                 task = self._service().upsert_task(payload)
                 self._send_json({"task": task}, status=HTTPStatus.CREATED)
+                return
+            if parsed.path == "/api/repositories":
+                repository = self._service().upsert_repository(payload)
+                self._send_json({"repository": repository}, status=HTTPStatus.CREATED)
                 return
             if parsed.path.startswith("/api/tasks/") and parsed.path.endswith("/reviewed"):
                 path_parts = [part for part in parsed.path.split("/") if part]
@@ -114,6 +122,11 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             parsed = urlparse(self.path)
             if parsed.path == "/api/runs":
                 result = self._service().clear_runs()
+                self._send_json(result)
+                return
+            if parsed.path.startswith("/api/repositories/"):
+                repository_id = unquote(parsed.path.split("/api/repositories/", 1)[1]).strip("/")
+                result = self._service().delete_repository(repository_id)
                 self._send_json(result)
                 return
             if parsed.path.startswith("/api/tasks/"):

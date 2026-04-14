@@ -5,6 +5,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from typing import Dict, List, Set
 
 REPO_ROOT = Path(__file__).resolve().parent
 if str(REPO_ROOT) not in sys.path:
@@ -16,7 +17,7 @@ from overnight_runner.executors import (
     DelegatingTaskExecutor,
     NoopTaskExecutor,
 )
-from overnight_runner.git_ops import GitRepository
+from overnight_runner.git_ops import GitCommandError, GitRepository
 from overnight_runner.publishers import GitHubPullRequestPublisher
 from overnight_runner.runner import TaskRunner
 
@@ -40,7 +41,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--repo-root",
         default=str(Path.cwd()),
-        help="Path to the target git repository root.",
+        help=(
+            "Fallback git repository root. In multirepo mode, tasks use the "
+            "repository registry from the backlog."
+        ),
     )
     parser.add_argument(
         "--backlog",
@@ -107,16 +111,68 @@ def _select_tasks(tasks, task_ids, max_tasks):
     return selected
 
 
+def _task_repositories(tasks) -> Dict[Path, Set[str]]:
+    repositories: Dict[Path, Set[str]] = {}
+    for task in tasks:
+        repository_path = Path(task.repository_path).expanduser().resolve()
+        repositories.setdefault(repository_path, set()).add(task.repository_id)
+    return repositories
+
+
+def _repository_preflight_errors(tasks) -> List[str]:
+    errors: List[str] = []
+    for repository_path, repository_ids in sorted(
+        _task_repositories(tasks).items(),
+        key=lambda item: str(item[0]),
+    ):
+        repository_label = ", ".join(sorted(repository_ids))
+        if not repository_path.exists():
+            errors.append(
+                f"Repository `{repository_label}` path does not exist: `{repository_path}`."
+            )
+            continue
+        if not repository_path.is_dir():
+            errors.append(
+                f"Repository `{repository_label}` path is not a directory: `{repository_path}`."
+            )
+            continue
+        if not os.access(repository_path, os.R_OK | os.X_OK):
+            errors.append(
+                f"Repository `{repository_label}` path is not accessible: `{repository_path}`."
+            )
+            continue
+
+        git_repo = GitRepository(repository_path)
+        try:
+            current_branch = git_repo.current_branch()
+        except GitCommandError:
+            errors.append(
+                f"Repository `{repository_label}` is not a valid git repository: `{repository_path}`."
+            )
+            continue
+
+        if current_branch != "main":
+            errors.append(
+                "Development flow can only start from the `main` branch. "
+                f"Repository `{repository_label}` is on `{current_branch}` at `{repository_path}`."
+            )
+        if git_repo.has_uncommitted_changes():
+            errors.append(
+                "Development flow can only start with a clean working tree. "
+                f"Repository `{repository_label}` has uncommitted changes at `{repository_path}`."
+            )
+    return errors
+
+
 def main() -> int:
     args = parse_args()
     repo_root = Path(args.repo_root).resolve()
     backlog_path = Path(args.backlog).resolve()
     runs_root = Path(args.runs_root).resolve()
     worktrees_root = Path(args.worktrees_root).resolve()
-    git_repo = GitRepository(repo_root)
 
     try:
-        tasks = load_backlog(backlog_path)
+        tasks = load_backlog(backlog_path, default_repo_root=repo_root)
     except ValueError as error:
         print(str(error), file=sys.stderr)
         return 1
@@ -137,20 +193,11 @@ def main() -> int:
         )
         return 1
     if not args.resume_run_id:
-        current_branch = git_repo.current_branch()
-        if current_branch != "main":
-            print(
-                "Error: development flow can only start from the `main` branch. "
-                f"Current branch: `{current_branch}`.",
-                file=sys.stderr,
-            )
-            return 1
-        if git_repo.has_uncommitted_changes():
-            print(
-                "Error: development flow can only start with a clean working tree. "
-                "Commit or stash your local changes first.",
-                file=sys.stderr,
-            )
+        preflight_errors = _repository_preflight_errors(tasks)
+        if preflight_errors:
+            print("Error: repository preflight checks failed:", file=sys.stderr)
+            for error in preflight_errors:
+                print(f"- {error}", file=sys.stderr)
             return 1
     if not os.environ.get("GITHUB_TOKEN", "").strip():
         print(
@@ -171,7 +218,7 @@ def main() -> int:
             },
             default_executor_type="codex",
         ),
-        pull_request_publisher=GitHubPullRequestPublisher(repo_root=repo_root),
+        pull_request_publisher=GitHubPullRequestPublisher(),
     )
     if args.resume_run_id:
         target_run_id = args.run_id or args.resume_run_id

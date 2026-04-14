@@ -693,6 +693,7 @@ pre {
 }
 
 input:not([type="checkbox"]):not([type="radio"]),
+select,
 textarea {
   width: 100%;
   padding: 11px 12px;
@@ -704,6 +705,7 @@ textarea {
 }
 
 input::placeholder,
+select::placeholder,
 textarea::placeholder {
   color: rgba(158, 181, 202, 0.64);
 }
@@ -1030,6 +1032,50 @@ details pre {
   font-size: 0.98rem;
 }
 
+.repository-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.repository-form label {
+  display: grid;
+  gap: 8px;
+}
+
+.repository-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.repository-item {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(143, 235, 255, 0.1);
+  border-radius: 16px;
+  background: rgba(2, 8, 18, 0.66);
+}
+
+.repository-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.repository-item code {
+  color: #dcfbff;
+  overflow-wrap: anywhere;
+}
+
+.repository-item-copy {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
 .site-footer {
   margin-top: 22px;
 }
@@ -1102,6 +1148,7 @@ details pre {
 
 button:focus-visible,
 input:focus-visible,
+select:focus-visible,
 textarea:focus-visible,
 summary:focus-visible,
 .settings-launch:focus-visible {

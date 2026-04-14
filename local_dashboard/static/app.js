@@ -163,7 +163,10 @@ function renderRunnerStatus(overview) {
       "runner-launch-secondary",
       joinSummary([
         overview.current_branch ? `branch: ${overview.current_branch}` : "",
-        overview.dirty_worktree ? "repo has local changes" : "repo clean",
+        overview.dirty_worktree ? "current repo has local changes" : "current repo clean",
+        overview.configured_repositories_ready
+          ? "configured repos on main + clean"
+          : "configured repos need main + clean",
         overview.github_token_available ? "GitHub token ready" : "GitHub token missing",
         overview.codex_cli_available ? "Codex CLI ready" : "Codex CLI missing",
       ])
@@ -283,12 +286,25 @@ function renderOverview(overview) {
   state.overview = overview;
   document.getElementById("repo-root").textContent = overview.repo_root;
   const indicator = document.getElementById("dirty-indicator");
-  if (overview.dirty_worktree) {
+  if (overview.repo_clean_badge) {
+    indicator.textContent = "Repo Clean";
+    indicator.className = "status-pill success";
+    indicator.title =
+      "Current repo is clean and all configured repositories are on `main` with clean worktrees.";
+  } else if (overview.dirty_worktree) {
     indicator.textContent = "Repo has uncommitted changes";
     indicator.className = "status-pill warning";
+    indicator.title = overview.repo_clean_badge_error || "Current repo has uncommitted changes.";
+  } else if (!overview.configured_repositories_ready) {
+    indicator.textContent = "Configured repos need main + clean";
+    indicator.className = "status-pill warning";
+    indicator.title =
+      overview.repo_clean_badge_error ||
+      "At least one configured repository is not on `main` or has uncommitted changes.";
   } else {
-    indicator.textContent = "Repo clean";
-    indicator.className = "status-pill success";
+    indicator.textContent = "Repo checks pending";
+    indicator.className = "status-pill neutral";
+    indicator.title = overview.repo_clean_badge_error || "Repository checks are still in progress.";
   }
 
   const tokenIndicator = document.getElementById("github-token-indicator");
@@ -380,6 +396,50 @@ function taskCommand(task) {
 
 function taskCommandLabel(task) {
   return taskCommand(task) || "No test command configured";
+}
+
+function repositories() {
+  return Array.isArray(state.backlog.repositories) ? state.backlog.repositories : [];
+}
+
+function normalizePathForComparison(value) {
+  return String(value || "").trim().replace(/[\\/]+$/, "");
+}
+
+function isControlRepository(repository) {
+  if (String((repository && repository.id) || "").trim() === "default") {
+    return true;
+  }
+  const repoRoot = normalizePathForComparison(state.overview && state.overview.repo_root);
+  const repositoryPath = normalizePathForComparison(repository && repository.path);
+  if (!repoRoot || !repositoryPath) {
+    return false;
+  }
+  return repositoryPath === repoRoot;
+}
+
+function selectableRepositories() {
+  return repositories().filter((repository) => !isControlRepository(repository));
+}
+
+function repositoryById(repositoryId) {
+  return repositories().find((repository) => repository.id === repositoryId) || null;
+}
+
+function taskRepositoryId(task) {
+  return String(task.repository_id || "").trim();
+}
+
+function taskRepositoryLabel(task) {
+  const repositoryId = taskRepositoryId(task);
+  if (!repositoryId) {
+    return "Repository not selected";
+  }
+  const repository = repositoryById(repositoryId);
+  if (!repository) {
+    return repositoryId;
+  }
+  return `${repository.id} · ${repository.path}`;
 }
 
 function taskPipeline(task) {
@@ -592,6 +652,7 @@ function taskCardMarkup(task) {
     <article class="${active}">
       ${taskSelectionMarkup(task)}
       <p class="task-id">${escapeHtml(task.id)}</p>
+      <p class="task-description"><strong>Repository:</strong> ${escapeHtml(taskRepositoryLabel(task))}</p>
       <p class="task-description">${escapeHtml(task.description || "No description yet.")}</p>
       ${
         attachments.length
@@ -675,6 +736,80 @@ function renderTaskList() {
   syncRunButtons();
 }
 
+function renderRepositoryOptions(selectedRepositoryId = "") {
+  const select = document.getElementById("task-repository-select");
+  if (!select) {
+    return "";
+  }
+  const repositoryList = selectableRepositories();
+  const requestedSelection = String(selectedRepositoryId || "").trim();
+  const resolvedSelection = repositoryList.some((repository) => repository.id === requestedSelection)
+    ? requestedSelection
+    : "";
+  const placeholderSelected = resolvedSelection ? "" : "selected";
+
+  select.innerHTML = [
+    `<option value="" ${placeholderSelected}>Select a repository</option>`,
+    ...repositoryList.map((repository) => {
+      const selected = repository.id === resolvedSelection ? "selected" : "";
+      return `<option value="${escapeHtml(repository.id)}" ${selected}>${escapeHtml(
+        `${repository.id} · ${repository.path}`
+      )}</option>`;
+    }),
+  ].join("");
+  return resolvedSelection;
+}
+
+function repositoryStatusPill(repository) {
+  if (repository.development_flow_allowed) {
+    return `<span class="status-pill success">Ready</span>`;
+  }
+  if (repository.error) {
+    return `<span class="status-pill warning">Needs attention</span>`;
+  }
+  return `<span class="status-pill neutral">Checking</span>`;
+}
+
+function renderRepositoryRegistry() {
+  const container = document.getElementById("repository-list");
+  if (!container) {
+    return;
+  }
+  const repositoryList = repositories();
+  if (!repositoryList.length) {
+    container.className = "repository-list empty-state";
+    container.textContent = "No repositories registered yet.";
+    return;
+  }
+
+  container.className = "repository-list";
+  container.innerHTML = repositoryList
+    .map(
+      (repository) => `
+        <article class="repository-item">
+          <div class="repository-item-row">
+            <strong>${escapeHtml(repository.id)}</strong>
+            ${repositoryStatusPill(repository)}
+          </div>
+          <code>${escapeHtml(repository.path || "")}</code>
+          ${
+            repository.error
+              ? `<p class="repository-item-copy error">${escapeHtml(repository.error)}</p>`
+              : `<p class="repository-item-copy">Branch: ${escapeHtml(
+                  repository.current_branch || "unknown"
+                )} · ${repository.clean_worktree ? "clean" : "dirty worktree"}</p>`
+          }
+          <div class="task-actions">
+            <button class="danger" type="button" data-action="delete-repository" data-repository-id="${escapeHtml(
+              repository.id
+            )}">Remove</button>
+          </div>
+        </article>
+      `
+    )
+    .join("");
+}
+
 function renderRuns() {
   const container = document.getElementById("run-list");
   if (!state.runs.length) {
@@ -737,7 +872,9 @@ function renderRunDetail(run) {
               </div>
               <span class="status-pill ${task.status}">${task.status}</span>
             </div>
-            <p>Attempts: ${task.attempts} · Branch: ${escapeHtml(task.branch_name || "pending")}</p>
+            <p>Attempts: ${task.attempts} · Repository: ${escapeHtml(
+              task.repository_id || "default"
+            )} · Branch: ${escapeHtml(task.branch_name || "pending")}</p>
             ${
               task.pull_request_url
                 ? `<p><a href="${escapeHtml(task.pull_request_url)}" target="_blank" rel="noreferrer">Open pull request</a></p>`
@@ -834,6 +971,10 @@ function populateTaskForm(task = null) {
   state.currentTaskId = task ? task.id : null;
   fields.id.value = taskData.id || "";
   fields.title.value = taskData.title || "";
+  const resolvedRepositorySelection = renderRepositoryOptions(
+    taskRepositoryId(taskData) || fields.repository_id.value || ""
+  );
+  fields.repository_id.value = resolvedRepositorySelection;
   fields.description.value = taskData.description || "";
   fields.test_command.value = task ? taskCommand(task) : "";
   fields.base_branch.value = taskData.base_branch || state.backlog.defaults.base_branch || "main";
@@ -869,6 +1010,8 @@ async function loadBacklog() {
       state.selectedTaskIds.delete(taskId);
     }
   }
+  renderRepositoryRegistry();
+  renderRepositoryOptions();
   renderTaskList();
   if (!state.currentTaskId) {
     populateTaskForm(null);
@@ -992,6 +1135,7 @@ async function handleTaskSubmit(event) {
   const payload = {
     id: fields.id.value.trim(),
     title: fields.title.value.trim(),
+    repository_id: fields.repository_id.value.trim(),
     description: fields.description.value.trim(),
     test_command: fields.test_command.value.trim(),
     base_branch: fields.base_branch.value.trim(),
@@ -1048,6 +1192,62 @@ async function deleteTaskById(taskId) {
     }
     setSaveStatus(`Deleted ${taskId}.`, "success-text");
     await loadBacklog();
+  } catch (error) {
+    setSaveStatus(error.message, "error");
+  }
+}
+
+async function handleRepositorySubmit(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const fields = form.elements;
+  const payload = {
+    id: fields.id.value.trim(),
+    path: fields.path.value.trim(),
+  };
+
+  try {
+    await request("/api/repositories", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    form.reset();
+    await Promise.all([
+      loadBacklog(),
+      (async () => {
+        const overview = await request("/api/overview");
+        renderOverview(overview);
+      })(),
+    ]);
+    setSaveStatus(`Saved repository ${payload.id}.`, "success-text");
+  } catch (error) {
+    setSaveStatus(error.message, "error");
+  }
+}
+
+async function deleteRepository(repositoryId) {
+  if (!repositoryId) {
+    return;
+  }
+  const confirmed = window.confirm(
+    `Remove repository ${repositoryId}? Tasks linked to it must be moved first.`
+  );
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    await request(`/api/repositories/${encodeURIComponent(repositoryId)}`, {
+      method: "DELETE",
+    });
+    await Promise.all([
+      loadBacklog(),
+      (async () => {
+        const overview = await request("/api/overview");
+        renderOverview(overview);
+      })(),
+    ]);
+    setSaveStatus(`Removed repository ${repositoryId}.`, "success-text");
   } catch (error) {
     setSaveStatus(error.message, "error");
   }
@@ -1156,6 +1356,9 @@ async function cleanupMergedBranches() {
 
 function wireEvents() {
   document.getElementById("task-form").addEventListener("submit", handleTaskSubmit);
+  document
+    .getElementById("repository-form")
+    .addEventListener("submit", handleRepositorySubmit);
   document.getElementById("clear-runs-button").addEventListener("click", clearRuns);
   document
     .getElementById("task-attachments-input")
@@ -1200,6 +1403,9 @@ function wireEvents() {
     }
     if (action === "remove-task") {
       deleteTaskById(button.dataset.taskId);
+    }
+    if (action === "delete-repository") {
+      deleteRepository(button.dataset.repositoryId);
     }
     if (action === "remove-attachment") {
       removeDraftAttachment(button.dataset.attachmentId);

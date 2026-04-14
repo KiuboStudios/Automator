@@ -18,7 +18,9 @@ from uuid import uuid4
 
 from overnight_runner.backlog import (
     build_task_definition,
+    build_repository_registry,
     load_backlog_document,
+    normalize_repository_entries,
     save_backlog_document,
 )
 from overnight_runner.executors import resolve_codex_binary
@@ -162,6 +164,22 @@ def _task_branch_from_events(events: List[Dict[str, Any]]) -> str:
         branch_name = event.get("context", {}).get("branch_name")
         if branch_name:
             return branch_name
+    return ""
+
+
+def _task_repository_id_from_events(events: List[Dict[str, Any]]) -> str:
+    for event in events:
+        repository_id = str(event.get("context", {}).get("repository_id") or "").strip()
+        if repository_id:
+            return repository_id
+    return ""
+
+
+def _task_repository_path_from_events(events: List[Dict[str, Any]]) -> str:
+    for event in events:
+        repository_path = str(event.get("context", {}).get("repository_path") or "").strip()
+        if repository_path:
+            return repository_path
     return ""
 
 
@@ -542,22 +560,155 @@ class DashboardService:
         default_runner_entrypoint = Path(__file__).resolve().parents[1] / "main.py"
         self.runner_entrypoint = (runner_entrypoint or default_runner_entrypoint).resolve()
         self.git_repo = GitRepository(repo_root)
+        self._git_by_repo_root: Dict[str, GitRepository] = {
+            str(repo_root.expanduser().resolve()): self.git_repo,
+        }
         self._active_runs: Dict[str, ActiveRun] = {}
         self._lock = threading.Lock()
 
-    def _development_flow_guard(self) -> Optional[str]:
-        current_branch = self.git_repo.current_branch()
-        if current_branch != "main":
-            return (
+    def _git_for_repository(self, repository_path: Path) -> GitRepository:
+        key = str(repository_path.expanduser().resolve())
+        git_repo = self._git_by_repo_root.get(key)
+        if git_repo is None:
+            git_repo = GitRepository(Path(key))
+            self._git_by_repo_root[key] = git_repo
+        return git_repo
+
+    def _repository_entries_from_document(self, document: Dict[str, Any]) -> List[Dict[str, str]]:
+        return normalize_repository_entries(
+            document.get("repositories", []),
+        )
+
+    def _repository_registry_from_document(self, document: Dict[str, Any]) -> Dict[str, str]:
+        return build_repository_registry(
+            document,
+        )
+
+    def _repository_health(
+        self,
+        repository_id: str,
+        repository_path: str,
+        require_clean: bool = False,
+        require_main_branch: bool = False,
+    ) -> Dict[str, Any]:
+        path = Path(repository_path).expanduser().resolve()
+        health = {
+            "id": repository_id,
+            "path": str(path),
+            "exists": False,
+            "accessible": False,
+            "is_git_repository": False,
+            "current_branch": "",
+            "dirty_worktree": False,
+            "clean_worktree": False,
+            "development_flow_allowed": False,
+            "error": "",
+        }
+        if not path.exists():
+            health["error"] = (
+                f"Repository `{repository_id}` path does not exist: `{path}`."
+            )
+            return health
+        health["exists"] = True
+
+        if not path.is_dir():
+            health["error"] = (
+                f"Repository `{repository_id}` path is not a directory: `{path}`."
+            )
+            return health
+
+        if not os.access(path, os.R_OK | os.X_OK):
+            health["error"] = (
+                f"Repository `{repository_id}` path is not accessible: `{path}`."
+            )
+            return health
+        health["accessible"] = True
+
+        git_repo = self._git_for_repository(path)
+        try:
+            current_branch = git_repo.current_branch()
+        except GitCommandError:
+            health["error"] = (
+                f"Repository `{repository_id}` is not a valid git repository: `{path}`."
+            )
+            return health
+
+        health["is_git_repository"] = True
+        health["current_branch"] = current_branch
+
+        if require_main_branch and current_branch != "main":
+            health["error"] = (
                 "Development flow can only start from the `main` branch. "
-                f"Current branch: `{current_branch}`."
+                f"Current branch: `{current_branch}` in repository `{repository_id}`."
             )
-        if self.git_repo.has_uncommitted_changes():
-            return (
+            return health
+        try:
+            health["dirty_worktree"] = git_repo.has_uncommitted_changes()
+        except GitCommandError:
+            if require_clean:
+                health["error"] = (
+                    f"Repository `{repository_id}` is not a valid git repository: `{path}`."
+                )
+                return health
+            health["dirty_worktree"] = False
+        health["clean_worktree"] = not health["dirty_worktree"]
+        if require_clean and health["dirty_worktree"]:
+            health["error"] = (
                 "Development flow can only start with a clean working tree. "
-                "Commit or stash your local changes first."
+                f"Repository `{repository_id}` has uncommitted changes."
             )
-        return None
+            return health
+
+        health["development_flow_allowed"] = True
+        return health
+
+    def _development_flow_errors(
+        self,
+        repository_ids: Optional[List[str]] = None,
+    ) -> List[str]:
+        document = load_backlog_document(self.backlog_path)
+        repositories = self._repository_entries_from_document(document)
+        repositories_by_id = {repository["id"]: repository for repository in repositories}
+        current_repo_root = self.repo_root.expanduser().resolve()
+        errors: List[str] = []
+        if repository_ids:
+            allowed_ids = set(repository_ids)
+            unknown_repository_ids = sorted(allowed_ids - set(repositories_by_id))
+            errors.extend([f"Unknown repository id: {repository_id}" for repository_id in unknown_repository_ids])
+            repositories = [
+                repositories_by_id[repository_id]
+                for repository_id in sorted(allowed_ids & set(repositories_by_id))
+            ]
+        errors.extend(
+            [
+                health["error"]
+                for health in (
+                    # The Automator control repository must be clean, but does not need to be on main.
+                    self._repository_health(
+                        repository_id=repository["id"],
+                        repository_path=repository["path"],
+                        require_clean=True,
+                        require_main_branch=(
+                            Path(str(repository["path"])).expanduser().resolve() != current_repo_root
+                        ),
+                    )
+                    for repository in repositories
+                )
+                if health["error"]
+            ]
+        )
+        return errors
+
+    def _development_flow_guard(
+        self,
+        repository_ids: Optional[List[str]] = None,
+    ) -> Optional[str]:
+        errors = self._development_flow_errors(repository_ids=repository_ids)
+        if not errors:
+            return None
+        if len(errors) == 1:
+            return errors[0]
+        return "Repository checks failed: " + " | ".join(errors)
 
     def _runner_entrypoint_guard(self) -> Optional[str]:
         if self.runner_entrypoint.exists():
@@ -614,11 +765,47 @@ class DashboardService:
                 reverse=True,
             )
         active_run_count = len(active_run_ids)
+        document = load_backlog_document(self.backlog_path)
+        repository_entries = self._repository_entries_from_document(document)
+        repository_health = [
+            self._repository_health(
+                repository_id=repository["id"],
+                repository_path=repository["path"],
+                require_clean=False,
+                require_main_branch=False,
+            )
+            for repository in repository_entries
+        ]
+        repository_ids = [repository["id"] for repository in repository_entries]
+        current_repo_health = self._repository_health(
+            repository_id="current",
+            repository_path=str(self.repo_root),
+            require_clean=False,
+            require_main_branch=False,
+        )
         codex_cli_path = resolve_codex_binary() or ""
         github_token_available = bool(os.environ.get("GITHUB_TOKEN", "").strip())
         codex_cli_available = bool(codex_cli_path)
-        current_branch = self.git_repo.current_branch()
-        development_flow_error = self._development_flow_guard()
+        current_branch = str(current_repo_health.get("current_branch") or "")
+        dirty_worktree = bool(current_repo_health.get("dirty_worktree"))
+        current_repo_is_git_repository = bool(current_repo_health.get("is_git_repository"))
+        development_flow_error = self._development_flow_guard(repository_ids=repository_ids)
+        configured_repositories_ready = not bool(development_flow_error)
+        repo_clean_badge = (
+            current_repo_is_git_repository
+            and not dirty_worktree
+            and configured_repositories_ready
+        )
+        repo_clean_badge_reasons: List[str] = []
+        if not current_repo_is_git_repository:
+            repo_clean_badge_reasons.append(
+                str(current_repo_health.get("error") or "Current repo is not a valid git repository.")
+            )
+        elif dirty_worktree:
+            repo_clean_badge_reasons.append("Current repo has uncommitted changes.")
+        if development_flow_error:
+            repo_clean_badge_reasons.append(development_flow_error)
+        repo_clean_badge_error = " | ".join(reason for reason in repo_clean_badge_reasons if reason)
         runner_entrypoint_error = self._runner_entrypoint_guard()
         branch_cleanup_error = self._branch_cleanup_guard()
         merged_task_branch_names = self._merged_task_branch_names()
@@ -704,9 +891,22 @@ class DashboardService:
             "observed_at": _utc_now(),
             "dashboard_accessible": True,
             "current_branch": current_branch,
-            "dirty_worktree": self.git_repo.has_uncommitted_changes(),
+            "dirty_worktree": dirty_worktree,
+            "current_repo_is_git_repository": current_repo_is_git_repository,
+            "current_repo_clean_worktree": current_repo_is_git_repository and not dirty_worktree,
+            "configured_repositories_ready": configured_repositories_ready,
+            "repo_clean_badge": repo_clean_badge,
+            "repo_clean_badge_error": repo_clean_badge_error,
             "development_flow_allowed": not bool(development_flow_error),
             "development_flow_error": development_flow_error or "",
+            "repositories": repository_health,
+            "repository_count": len(repository_health),
+            "ready_repository_count": len(
+                [repository for repository in repository_health if repository.get("development_flow_allowed")]
+            ),
+            "dirty_repository_count": len(
+                [repository for repository in repository_health if repository.get("dirty_worktree")]
+            ),
             "github_token_available": github_token_available,
             "codex_cli_available": codex_cli_available,
             "codex_cli_path": codex_cli_path,
@@ -923,18 +1123,50 @@ class DashboardService:
 
     def get_backlog(self) -> Dict[str, Any]:
         document = load_backlog_document(self.backlog_path)
+        repository_entries = self._repository_entries_from_document(document)
+        defaults = document.setdefault("defaults", {})
+        repository_ids = {repository["id"] for repository in repository_entries}
+        default_repository_id = str(defaults.get("repository_id") or "").strip()
+        if repository_entries:
+            if not default_repository_id or default_repository_id not in repository_ids:
+                defaults["repository_id"] = repository_entries[0]["id"]
+        else:
+            defaults.pop("repository_id", None)
+        repository_registry = self._repository_registry_from_document(document)
+        repository_status_by_id = {
+            repository["id"]: self._repository_health(
+                repository_id=repository["id"],
+                repository_path=repository["path"],
+                require_clean=False,
+                require_main_branch=False,
+            )
+            for repository in repository_entries
+        }
         latest_task_runs = self._latest_task_runs()
         if self._auto_mark_tasks_reviewed(document, latest_task_runs):
             save_backlog_document(self.backlog_path, document)
         enriched_tasks = []
         for raw_task in document.get("tasks", []):
+            task_definition = build_task_definition(
+                document.get("defaults", {}),
+                raw_task,
+                backlog_root=self.backlog_root,
+                repository_registry=repository_registry,
+            )
             task = dict(raw_task)
             task["reviewed"] = bool(task.get("reviewed", False))
+            task["repository_id"] = task_definition.repository_id
+            task["repository_path"] = task_definition.repository_path
+            task["repository"] = repository_status_by_id.get(task_definition.repository_id, {})
             task["attachments"] = self._serialize_task_attachments(
                 task["id"],
                 task.get("attachments", []),
             )
-            task["branch"] = self._task_branch_snapshot(task["id"])
+            task["branch"] = self._task_branch_snapshot(
+                task_id=task["id"],
+                repository_id=task_definition.repository_id,
+                repository_path=task_definition.repository_path,
+            )
             task["branch_name"] = task["branch"]["name"]
             latest_run = latest_task_runs.get(task["id"])
             task["pipeline"] = (
@@ -943,11 +1175,34 @@ class DashboardService:
                 else _default_pipeline_state()
             )
             enriched_tasks.append(task)
+        task_count_by_repository: Dict[str, int] = {}
+        active_task_count_by_repository: Dict[str, int] = {}
+        for task in enriched_tasks:
+            repository_id = str(task.get("repository_id") or "").strip()
+            if not repository_id:
+                continue
+            task_count_by_repository[repository_id] = (
+                task_count_by_repository.get(repository_id, 0) + 1
+            )
+            if not task.get("reviewed"):
+                active_task_count_by_repository[repository_id] = (
+                    active_task_count_by_repository.get(repository_id, 0) + 1
+                )
+
+        document["repositories"] = [
+            {
+                **repository_status_by_id.get(repository["id"], repository),
+                "task_count": task_count_by_repository.get(repository["id"], 0),
+                "active_task_count": active_task_count_by_repository.get(repository["id"], 0),
+            }
+            for repository in repository_entries
+        ]
         document["tasks"] = enriched_tasks
         return document
 
     def upsert_task(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         document = load_backlog_document(self.backlog_path)
+        repository_registry = self._repository_registry_from_document(document)
         existing = document.get("tasks", [])
         requested_task_id = str(payload.get("id", "")).strip()
         existing_task = next(
@@ -957,6 +1212,7 @@ class DashboardService:
         raw_task = self._normalize_task_payload(
             payload,
             document.get("defaults", {}),
+            repository_registry=repository_registry,
             existing_task=existing_task,
             backlog_root=self.backlog_root,
         )
@@ -977,6 +1233,97 @@ class DashboardService:
         return {
             **raw_task,
             "attachments": self._serialize_task_attachments(raw_task["id"], attachments),
+            "repository": self._repository_health(
+                repository_id=str(raw_task.get("repository_id") or ""),
+                repository_path=repository_registry.get(str(raw_task.get("repository_id") or ""), ""),
+                require_clean=True,
+                require_main_branch=True,
+            ),
+        }
+
+    @staticmethod
+    def _normalize_repository_payload(payload: Dict[str, Any]) -> Dict[str, str]:
+        repository_id = str(payload.get("id", "")).strip()
+        repository_path = str(payload.get("path", "")).strip()
+        if not repository_id:
+            raise ValueError("Repository id is required.")
+        if not repository_path:
+            raise ValueError("Repository path is required.")
+        return {
+            "id": repository_id,
+            "path": str(Path(repository_path).expanduser().resolve()),
+        }
+
+    def upsert_repository(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        normalized_repository = self._normalize_repository_payload(payload)
+        health = self._repository_health(
+            repository_id=normalized_repository["id"],
+            repository_path=normalized_repository["path"],
+            require_clean=True,
+            require_main_branch=True,
+        )
+        if health["error"]:
+            raise ValueError(health["error"])
+
+        document = load_backlog_document(self.backlog_path)
+        repositories = self._repository_entries_from_document(document)
+        repositories_by_id = {repository["id"]: repository for repository in repositories}
+        repositories_by_id[normalized_repository["id"]] = normalized_repository
+        updated_repositories = sorted(repositories_by_id.values(), key=lambda repository: repository["id"])
+        document["repositories"] = updated_repositories
+
+        defaults = document.setdefault("defaults", {})
+        default_repository_id = str(defaults.get("repository_id", "")).strip()
+        if not default_repository_id or default_repository_id not in repositories_by_id:
+            defaults["repository_id"] = normalized_repository["id"]
+
+        save_backlog_document(self.backlog_path, document)
+        return health
+
+    def delete_repository(self, repository_id: str) -> Dict[str, Any]:
+        normalized_repository_id = str(repository_id or "").strip()
+        if not normalized_repository_id:
+            raise ValueError("Repository id is required.")
+
+        document = load_backlog_document(self.backlog_path)
+        repositories = self._repository_entries_from_document(document)
+        if normalized_repository_id not in {repository["id"] for repository in repositories}:
+            raise ValueError(f"Unknown repository id: {normalized_repository_id}")
+
+        task_dependencies = sorted(
+            {
+                str(task.get("id") or "")
+                for task in document.get("tasks", [])
+                if str(task.get("repository_id") or task.get("repository") or "").strip()
+                == normalized_repository_id
+            }
+        )
+        if task_dependencies:
+            raise ValueError(
+                "Cannot delete repository "
+                f"`{normalized_repository_id}` because it is used by tasks: "
+                + ", ".join(task_dependencies)
+            )
+
+        updated_repositories = [
+            repository
+            for repository in repositories
+            if repository["id"] != normalized_repository_id
+        ]
+        document["repositories"] = updated_repositories
+
+        defaults = document.setdefault("defaults", {})
+        default_repository_id = str(defaults.get("repository_id", "")).strip()
+        if updated_repositories:
+            if default_repository_id == normalized_repository_id or not default_repository_id:
+                defaults["repository_id"] = updated_repositories[0]["id"]
+        else:
+            defaults.pop("repository_id", None)
+
+        save_backlog_document(self.backlog_path, document)
+        return {
+            "deleted": normalized_repository_id,
+            "repositories": updated_repositories,
         }
 
     def set_task_reviewed(self, task_id: str, reviewed: bool) -> Dict[str, Any]:
@@ -1021,10 +1368,6 @@ class DashboardService:
         task_ids: Optional[List[str]] = None,
         max_tasks: Optional[int] = None,
     ) -> Dict[str, Any]:
-        development_flow_error = self._development_flow_guard()
-        if development_flow_error:
-            raise ValueError(development_flow_error)
-
         runner_entrypoint_error = self._runner_entrypoint_guard()
         if runner_entrypoint_error:
             raise ValueError(runner_entrypoint_error)
@@ -1046,6 +1389,28 @@ class DashboardService:
             raise ValueError(
                 "No backlog tasks are ready to run. Move a task back from Done or create a new one."
             )
+        selected_task_id_set = set(selected_task_ids)
+        selected_tasks = (
+            [
+                task
+                for task in active_tasks
+                if task.get("id") in selected_task_id_set
+            ]
+            if selected_task_ids
+            else list(active_tasks)
+        )
+        selected_repository_ids = sorted(
+            {
+                str(task.get("repository_id") or "").strip()
+                for task in selected_tasks
+                if str(task.get("repository_id") or "").strip()
+            }
+        )
+        development_flow_error = self._development_flow_guard(
+            repository_ids=selected_repository_ids,
+        )
+        if development_flow_error:
+            raise ValueError(development_flow_error)
 
         run_id = create_run_id()
         self.runs_root.mkdir(parents=True, exist_ok=True)
@@ -1221,7 +1586,9 @@ class DashboardService:
         run_root = self.runs_root / run_id
         run_root.mkdir(parents=True, exist_ok=True)
         self.worktrees_root.mkdir(parents=True, exist_ok=True)
-        task_root = run_root / "tasks" / task_worktree_name(task_id)
+        task_root = Path(
+            str(selected_run_task.get("task_root") or run_root / "tasks" / task_worktree_name(task_id))
+        )
         task_root.mkdir(parents=True, exist_ok=True)
         stdout_path = run_root / "runner.stdout.log"
         stderr_path = run_root / "runner.stderr.log"
@@ -1232,6 +1599,8 @@ class DashboardService:
             "requested_at": request_timestamp,
             "run_id": run_id,
             "task_id": task_id,
+            "repository_id": selected_run_task.get("repository_id") or "",
+            "repository_path": selected_run_task.get("repository_path") or "",
             "resume_stage": resume_stage,
             "resume_label": resume.get("label") or "",
             "branch_name": selected_run_task.get("branch_name") or "",
@@ -1352,6 +1721,10 @@ class DashboardService:
                 task = {
                     "task_id": task_id,
                     "title": merged_summary.get("title") or _task_title_from_events(task_id, events),
+                    "repository_id": merged_summary.get("repository_id")
+                    or _task_repository_id_from_events(events),
+                    "repository_path": merged_summary.get("repository_path")
+                    or _task_repository_path_from_events(events),
                     "status": merged_summary.get("status") or _infer_task_status(events),
                     "branch_name": merged_summary.get("branch_name") or _task_branch_from_events(events),
                     "attempts": merged_summary.get("attempts", _latest_attempt(events)),
@@ -1476,9 +1849,16 @@ class DashboardService:
             "running_count": len([task for task in tasks if task["status"] == "running"]),
         }
 
-    def _task_branch_snapshot(self, task_id: str) -> Dict[str, Any]:
+    def _task_branch_snapshot(
+        self,
+        task_id: str,
+        repository_id: str = "",
+        repository_path: str = "",
+    ) -> Dict[str, Any]:
         branch_name = task_branch_name(task_id)
-        preferred_worktree_path = (self.worktrees_root / task_worktree_name(task_id)).resolve()
+        preferred_worktree_path = (
+            self.worktrees_root / task_worktree_name(task_id, repository_id)
+        ).resolve()
         snapshot = {
             "name": branch_name,
             "exists_locally": False,
@@ -1486,11 +1866,25 @@ class DashboardService:
             "checked_out": False,
             "status": "new",
             "worktree_path": str(preferred_worktree_path),
+            "repository_id": repository_id,
+            "repository_path": str(Path(repository_path).expanduser().resolve())
+            if repository_path
+            else "",
         }
+        if not repository_path:
+            snapshot["status"] = "unknown_repository"
+            return snapshot
+
+        resolved_repository_path = Path(repository_path).expanduser().resolve()
+        snapshot["repository_path"] = str(resolved_repository_path)
+        if not resolved_repository_path.exists() or not resolved_repository_path.is_dir():
+            snapshot["status"] = "missing_repository"
+            return snapshot
 
         try:
-            active_worktree = self.git_repo.find_worktree_by_branch(branch_name)
-            branch_exists = self.git_repo.branch_exists(branch_name)
+            git_repo = self._git_for_repository(resolved_repository_path)
+            active_worktree = git_repo.find_worktree_by_branch(branch_name)
+            branch_exists = git_repo.branch_exists(branch_name)
         except GitCommandError:
             return snapshot
 
@@ -1505,7 +1899,7 @@ class DashboardService:
         if preferred_worktree_path.exists():
             snapshot["has_worktree"] = True
             try:
-                current_branch = self.git_repo.current_branch(cwd=preferred_worktree_path)
+                current_branch = git_repo.current_branch(cwd=preferred_worktree_path)
             except GitCommandError:
                 current_branch = ""
             if current_branch == branch_name:
@@ -1519,10 +1913,11 @@ class DashboardService:
             snapshot["status"] = "branch_only"
         return snapshot
 
-    @staticmethod
     def _normalize_task_payload(
+        self,
         payload: Dict[str, Any],
         defaults: Dict[str, Any],
+        repository_registry: Dict[str, str],
         existing_task: Optional[Dict[str, Any]] = None,
         backlog_root: Optional[Path] = None,
     ) -> Dict[str, Any]:
@@ -1534,6 +1929,20 @@ class DashboardService:
             raise ValueError("Task id is required.")
         if not title:
             raise ValueError("Task title is required.")
+        repository_id = str(
+            payload.get("repository_id")
+            or payload.get("repository")
+            or (existing_task or {}).get("repository_id")
+            or (existing_task or {}).get("repository")
+            or defaults.get("repository_id")
+            or ""
+        ).strip()
+        if not repository_id:
+            repository_id = next(iter(repository_registry), "")
+        if not repository_id:
+            raise ValueError("Task repository is required.")
+        if repository_id not in repository_registry:
+            raise ValueError(f"Unknown repository id: {repository_id}")
 
         if test_command in (None, ""):
             normalized_command = []
@@ -1548,6 +1957,7 @@ class DashboardService:
             "id": task_id,
             "title": title,
             "description": str(payload.get("description", "")).strip(),
+            "repository_id": repository_id,
             "base_branch": str(payload.get("base_branch") or defaults.get("base_branch", "main")).strip(),
             "working_directory": str(
                 payload.get("working_directory") or defaults.get("working_directory", ".")
@@ -1564,5 +1974,10 @@ class DashboardService:
         }
         if reviewed:
             raw_task["reviewed"] = True
-        build_task_definition(defaults, raw_task, backlog_root=backlog_root)
+        build_task_definition(
+            defaults,
+            raw_task,
+            backlog_root=backlog_root,
+            repository_registry=repository_registry,
+        )
         return raw_task
