@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -24,11 +25,19 @@ class DashboardServiceTests(unittest.TestCase):
                 runs_root=temp_path / "runs",
                 worktrees_root=temp_path / "worktrees",
             )
+            repository_path = self._init_git_repo(temp_path / "repo-one")
+            service.upsert_repository(
+                {
+                    "id": "repo-one",
+                    "path": str(repository_path),
+                }
+            )
 
             saved = service.upsert_task(
                 {
                     "id": "demo-task",
                     "title": "Demo task",
+                    "repository_id": "repo-one",
                     "new_attachments": [
                         {
                             "name": "mockup.png",
@@ -67,11 +76,19 @@ class DashboardServiceTests(unittest.TestCase):
                 runs_root=temp_path / "runs",
                 worktrees_root=temp_path / "worktrees",
             )
+            repository_path = self._init_git_repo(temp_path / "repo-one")
+            service.upsert_repository(
+                {
+                    "id": "repo-one",
+                    "path": str(repository_path),
+                }
+            )
 
             initial = service.upsert_task(
                 {
                     "id": "demo-task",
                     "title": "Demo task",
+                    "repository_id": "repo-one",
                     "new_attachments": [
                         {
                             "name": "mockup.png",
@@ -93,6 +110,7 @@ class DashboardServiceTests(unittest.TestCase):
                 {
                     "id": "demo-task",
                     "title": "Demo task",
+                    "repository_id": "repo-one",
                     "kept_attachment_ids": [kept_attachment["id"]],
                     "new_attachments": [],
                 }
@@ -105,9 +123,21 @@ class DashboardServiceTests(unittest.TestCase):
     def test_get_overview_reports_dashboard_environment_checks(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
+            self._init_git_repo(temp_path)
+            backlog_path = temp_path / "backlog.json"
+            backlog_path.write_text(
+                json.dumps(
+                    {
+                        "defaults": {"repository_id": "repo-main"},
+                        "repositories": [{"id": "repo-main", "path": str(temp_path)}],
+                        "tasks": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
             service = DashboardService(
                 repo_root=temp_path,
-                backlog_path=temp_path / "backlog.json",
+                backlog_path=backlog_path,
                 runs_root=temp_path / "runs",
                 worktrees_root=temp_path / "worktrees",
             )
@@ -205,10 +235,13 @@ class DashboardServiceTests(unittest.TestCase):
     def test_start_run_requires_main_branch(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
+            self._init_git_repo(temp_path)
             backlog_path = temp_path / "backlog.json"
             backlog_path.write_text(
                 json.dumps(
                     {
+                        "defaults": {"repository_id": "repo-main"},
+                        "repositories": [{"id": "repo-main", "path": str(temp_path)}],
                         "tasks": [
                             {
                                 "id": "demo-task",
@@ -233,10 +266,13 @@ class DashboardServiceTests(unittest.TestCase):
     def test_start_run_requires_clean_worktree(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
+            self._init_git_repo(temp_path)
             backlog_path = temp_path / "backlog.json"
             backlog_path.write_text(
                 json.dumps(
                     {
+                        "defaults": {"repository_id": "repo-main"},
+                        "repositories": [{"id": "repo-main", "path": str(temp_path)}],
                         "tasks": [
                             {
                                 "id": "demo-task",
@@ -714,11 +750,19 @@ class DashboardServiceTests(unittest.TestCase):
                 runs_root=temp_path / "runs",
                 worktrees_root=temp_path / "worktrees",
             )
+            repository_path = self._init_git_repo(temp_path / "repo-one")
+            service.upsert_repository(
+                {
+                    "id": "repo-one",
+                    "path": str(repository_path),
+                }
+            )
 
             saved = service.upsert_task(
                 {
                     "id": "demo-task",
                     "title": "Demo task",
+                    "repository_id": "repo-one",
                     "description": "Task from dashboard",
                     "test_command": "python3 -c \"print('ok')\"",
                     "base_branch": "main",
@@ -737,6 +781,110 @@ class DashboardServiceTests(unittest.TestCase):
 
             service.delete_task("demo-task")
             self.assertEqual(service.get_backlog()["tasks"], [])
+
+    def test_upsert_repository_registers_a_clean_git_repository(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            service = DashboardService(
+                repo_root=temp_path,
+                backlog_path=temp_path / "backlog.json",
+                runs_root=temp_path / "runs",
+                worktrees_root=temp_path / "worktrees",
+            )
+            repository_path = self._init_git_repo(temp_path / "repo-one")
+
+            registered = service.upsert_repository(
+                {
+                    "id": "repo-one",
+                    "path": str(repository_path),
+                }
+            )
+
+            self.assertEqual(registered["id"], "repo-one")
+            self.assertEqual(registered["path"], str(repository_path.resolve()))
+            self.assertTrue(registered["development_flow_allowed"])
+
+    def test_upsert_task_requires_a_known_repository_id(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            service = DashboardService(
+                repo_root=temp_path,
+                backlog_path=temp_path / "backlog.json",
+                runs_root=temp_path / "runs",
+                worktrees_root=temp_path / "worktrees",
+            )
+
+            with self.assertRaisesRegex(ValueError, "Unknown repository id"):
+                service.upsert_task(
+                    {
+                        "id": "demo-task",
+                        "title": "Demo task",
+                        "repository_id": "missing-repo",
+                        "description": "Task from dashboard",
+                        "test_command": "python3 -c \"print('ok')\"",
+                        "base_branch": "main",
+                        "working_directory": ".",
+                        "retry_limit": 2,
+                        "executor": {"type": "codex", "prompt": ""},
+                    }
+                )
+
+    def test_delete_repository_rejects_when_tasks_still_depend_on_it(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            service = DashboardService(
+                repo_root=temp_path,
+                backlog_path=temp_path / "backlog.json",
+                runs_root=temp_path / "runs",
+                worktrees_root=temp_path / "worktrees",
+            )
+            repository_path = self._init_git_repo(temp_path / "repo-one")
+            service.upsert_repository(
+                {
+                    "id": "repo-one",
+                    "path": str(repository_path),
+                }
+            )
+            service.upsert_task(
+                {
+                    "id": "demo-task",
+                    "title": "Demo task",
+                    "repository_id": "repo-one",
+                    "description": "Task from dashboard",
+                    "test_command": "",
+                    "base_branch": "main",
+                    "working_directory": ".",
+                    "retry_limit": 1,
+                    "executor": {"type": "codex", "prompt": ""},
+                }
+            )
+
+            with self.assertRaisesRegex(ValueError, "used by tasks"):
+                service.delete_repository("repo-one")
+
+    def test_delete_last_repository_keeps_registry_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            service = DashboardService(
+                repo_root=temp_path,
+                backlog_path=temp_path / "backlog.json",
+                runs_root=temp_path / "runs",
+                worktrees_root=temp_path / "worktrees",
+            )
+            repository_path = self._init_git_repo(temp_path / "repo-one")
+            service.upsert_repository(
+                {
+                    "id": "repo-one",
+                    "path": str(repository_path),
+                }
+            )
+
+            result = service.delete_repository("repo-one")
+            backlog = service.get_backlog()
+
+            self.assertEqual(result["repositories"], [])
+            self.assertEqual(backlog["repositories"], [])
+            self.assertNotIn("repository_id", backlog.get("defaults", {}))
 
     def test_upsert_task_preserves_reviewed_state(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -763,11 +911,19 @@ class DashboardServiceTests(unittest.TestCase):
                 runs_root=temp_path / "runs",
                 worktrees_root=temp_path / "worktrees",
             )
+            repository_path = self._init_git_repo(temp_path / "repo-one")
+            service.upsert_repository(
+                {
+                    "id": "repo-one",
+                    "path": str(repository_path),
+                }
+            )
 
             saved = service.upsert_task(
                 {
                     "id": "demo-task",
                     "title": "Demo task",
+                    "repository_id": "repo-one",
                     "description": "Edited from dashboard",
                     "test_command": "",
                     "base_branch": "main",
@@ -852,11 +1008,19 @@ class DashboardServiceTests(unittest.TestCase):
                 runs_root=temp_path / "runs",
                 worktrees_root=temp_path / "worktrees",
             )
+            repository_path = self._init_git_repo(temp_path / "repo-one")
+            service.upsert_repository(
+                {
+                    "id": "repo-one",
+                    "path": str(repository_path),
+                }
+            )
 
             saved = service.upsert_task(
                 {
                     "id": "task-without-tests",
                     "title": "Task without tests",
+                    "repository_id": "repo-one",
                     "description": "Dashboard task",
                     "test_command": "",
                     "base_branch": "main",
@@ -871,10 +1035,13 @@ class DashboardServiceTests(unittest.TestCase):
     def test_get_backlog_exposes_reusable_branch_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
+            self._init_git_repo(temp_path)
             backlog_path = temp_path / "backlog.json"
             backlog_path.write_text(
                 json.dumps(
                     {
+                        "defaults": {"repository_id": "repo-main"},
+                        "repositories": [{"id": "repo-main", "path": str(temp_path)}],
                         "tasks": [
                             {
                                 "id": "demo-task",
@@ -1293,6 +1460,46 @@ class DashboardServiceTests(unittest.TestCase):
             self.assertEqual(pipeline["overall_status"], "failed")
             self.assertEqual(pipeline["failure_stage"], "tests")
             self.assertEqual(pipeline["summary"], "Failed at Tests")
+
+    def _init_git_repo(self, repo_root: Path) -> Path:
+        repo_root.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["git", "init", "--initial-branch=main"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Codex Tester"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "codex@example.com"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        (repo_root / "README.md").write_text("temp repo\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "add", "README.md"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Initial commit"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return repo_root
 
 
 if __name__ == "__main__":

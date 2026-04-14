@@ -34,8 +34,12 @@ def task_branch_name(task_id: str) -> str:
     return f"{TASK_BRANCH_PREFIX}/{_slugify(task_id)}"
 
 
-def task_worktree_name(task_id: str) -> str:
-    return _slugify(task_id)
+def task_worktree_name(task_id: str, repository_id: str = "") -> str:
+    task_slug = _slugify(task_id)
+    repository_slug = _slugify(repository_id) if repository_id else ""
+    if repository_slug and repository_slug != "default":
+        return f"{repository_slug}-{task_slug}"
+    return task_slug
 
 
 def _load_json(path: Path) -> Dict[str, Any]:
@@ -409,7 +413,23 @@ class TaskRunner:
         self.worktrees_root = worktrees_root
         self.executor = executor
         self.pull_request_publisher = pull_request_publisher
-        self.git = GitRepository(repo_root)
+        self._git_by_repo_root: Dict[str, GitRepository] = {}
+
+    def _task_repository_root(self, task: TaskDefinition) -> Path:
+        raw_path = str(task.repository_path).strip()
+        return (
+            Path(raw_path).expanduser().resolve()
+            if raw_path
+            else self.repo_root.expanduser().resolve()
+        )
+
+    def _git_for_repository(self, repository_root: Path) -> GitRepository:
+        key = str(repository_root.expanduser().resolve())
+        git_repo = self._git_by_repo_root.get(key)
+        if git_repo is None:
+            git_repo = GitRepository(Path(key))
+            self._git_by_repo_root[key] = git_repo
+        return git_repo
 
     def run(self, tasks: Iterable[TaskDefinition]) -> List[TaskResult]:
         return self.run_with_id(tasks)
@@ -452,13 +472,18 @@ class TaskRunner:
         task: TaskDefinition,
         run_root: Path,
     ) -> TaskResult:
-        task_slug = _slugify(task.id)
+        task_slug = task_worktree_name(task.id, task.repository_id)
         task_root = run_root / "tasks" / task_slug
         task_root.mkdir(parents=True, exist_ok=True)
         logger = TaskEventLogger(task_root / "events.jsonl")
 
+        repository_root = self._task_repository_root(task)
+        git_repo = self._git_for_repository(repository_root)
         branch_name = task_branch_name(task.id)
-        worktree_path = self.worktrees_root / task_worktree_name(task.id)
+        worktree_path = self.worktrees_root / task_worktree_name(
+            task.id,
+            task.repository_id,
+        )
         summary_path = task_root / "task-summary.json"
 
         logger.log(
@@ -469,6 +494,8 @@ class TaskRunner:
             title=task.title,
             branch_name=branch_name,
             base_branch=task.base_branch,
+            repository_id=task.repository_id,
+            repository_path=str(repository_root),
             worktree_path=str(worktree_path),
             working_directory=task.working_directory,
         )
@@ -477,6 +504,7 @@ class TaskRunner:
             "started",
             "The automation runner started processing this task.",
             task_id=task.id,
+            repository_id=task.repository_id,
         )
 
         attempts = 0
@@ -489,6 +517,7 @@ class TaskRunner:
         try:
             worktree_path = self._prepare_task_worktree(
                 task=task,
+                git_repo=git_repo,
                 branch_name=branch_name,
                 worktree_path=worktree_path,
                 logger=logger,
@@ -533,7 +562,13 @@ class TaskRunner:
                     attempt=attempt,
                     artifact_path=str(artifact_path),
                 )
-                commit_sha = self._commit_attempt_changes(task, attempt, worktree_path, logger)
+                commit_sha = self._commit_attempt_changes(
+                    task=task,
+                    git_repo=git_repo,
+                    attempt=attempt,
+                    worktree_path=worktree_path,
+                    logger=logger,
+                )
                 if not commit_sha:
                     feedback = (
                         "The executor finished without creating any git changes in the task worktree."
@@ -671,13 +706,18 @@ class TaskRunner:
         run_root: Path,
         resume_from: str,
     ) -> TaskResult:
-        task_slug = _slugify(task.id)
+        task_slug = task_worktree_name(task.id, task.repository_id)
         task_root = run_root / "tasks" / task_slug
         task_root.mkdir(parents=True, exist_ok=True)
         logger = TaskEventLogger(task_root / "events.jsonl")
 
+        repository_root = self._task_repository_root(task)
+        git_repo = self._git_for_repository(repository_root)
         branch_name = task_branch_name(task.id)
-        worktree_path = self.worktrees_root / task_worktree_name(task.id)
+        worktree_path = self.worktrees_root / task_worktree_name(
+            task.id,
+            task.repository_id,
+        )
         summary_path = task_root / "task-summary.json"
         previous_summary = _load_json(summary_path)
         previous_events = _load_jsonl(logger.path)
@@ -699,6 +739,8 @@ class TaskRunner:
             title=task.title,
             branch_name=branch_name,
             base_branch=task.base_branch,
+            repository_id=task.repository_id,
+            repository_path=str(repository_root),
             worktree_path=str(worktree_path),
             working_directory=task.working_directory,
             resume_from=resume_from,
@@ -708,12 +750,14 @@ class TaskRunner:
             "started",
             "The automation runner resumed this task from the last incomplete stage.",
             task_id=task.id,
+            repository_id=task.repository_id,
             resume_from=resume_from,
         )
 
         try:
             worktree_path = self._prepare_task_worktree(
                 task=task,
+                git_repo=git_repo,
                 branch_name=branch_name,
                 worktree_path=worktree_path,
                 logger=logger,
@@ -763,7 +807,13 @@ class TaskRunner:
                     attempt=attempt,
                     artifact_path=str(artifact_path),
                 )
-                commit_sha = self._commit_attempt_changes(task, attempt, worktree_path, logger)
+                commit_sha = self._commit_attempt_changes(
+                    task=task,
+                    git_repo=git_repo,
+                    attempt=attempt,
+                    worktree_path=worktree_path,
+                    logger=logger,
+                )
                 if not commit_sha:
                     feedback = (
                         "The executor finished without creating any git changes in the task worktree."
@@ -1037,6 +1087,8 @@ class TaskRunner:
         result = TaskResult(
             task_id=task.id,
             title=task.title,
+            repository_id=task.repository_id,
+            repository_path=str(self._task_repository_root(task)),
             status=status,
             branch_name=branch_name,
             attempts=attempts,
@@ -1061,11 +1113,12 @@ class TaskRunner:
     def _commit_attempt_changes(
         self,
         task: TaskDefinition,
+        git_repo: GitRepository,
         attempt: int,
         worktree_path: Path,
         logger: TaskEventLogger,
     ) -> str:
-        if not self.git.has_uncommitted_changes(cwd=worktree_path):
+        if not git_repo.has_uncommitted_changes(cwd=worktree_path):
             return ""
 
         commit_message = self._commit_message(task, attempt)
@@ -1076,8 +1129,8 @@ class TaskRunner:
             attempt=attempt,
             commit_message=commit_message,
         )
-        self.git.stage_all(worktree_path)
-        commit_sha = self.git.commit_all(worktree_path, commit_message)
+        git_repo.stage_all(worktree_path)
+        commit_sha = git_repo.commit_all(worktree_path, commit_message)
         logger.log(
             "commit",
             "completed",
@@ -1091,6 +1144,7 @@ class TaskRunner:
     def _prepare_task_worktree(
         self,
         task: TaskDefinition,
+        git_repo: GitRepository,
         branch_name: str,
         worktree_path: Path,
         logger: TaskEventLogger,
@@ -1112,7 +1166,7 @@ class TaskRunner:
             ),
             **context,
         )
-        prepared_worktree = self.git.prepare_task_worktree(
+        prepared_worktree = git_repo.prepare_task_worktree(
             branch_name=branch_name,
             base_branch=task.base_branch,
             destination=worktree_path,

@@ -5,6 +5,7 @@ This repository contains the reusable overnight task runner engine and local das
 ## Current scope
 
 - Read tasks from a local backlog file.
+- Register multiple target repositories and assign each task to one repository.
 - Process each task independently in its own reusable git worktree and task branch.
 - Run Codex locally to implement each task inside its worktree.
 - Create an incremental git commit after each executor attempt that produces changes.
@@ -18,11 +19,38 @@ This repository contains the reusable overnight task runner engine and local das
 
 - Runtime state is intentionally kept in the target repository, not in `Automator`.
 - Default paths are:
-  - backlog: `<repo-root>/automation/backlog/tasks.json`
-  - attachments: `<repo-root>/automation/backlog/attachments/`
-  - runs: `<repo-root>/automation/runs/`
-  - worktrees: `/tmp/kiubo-automation-worktrees/<repo-name>`
+- backlog: `<repo-root>/automation/backlog/tasks.json`
+- attachments: `<repo-root>/automation/backlog/attachments/`
+- runs: `<repo-root>/automation/runs/`
+- worktrees: `/tmp/kiubo-automation-worktrees/<repo-name>`
 - The tracked sample backlog in this repo is `backlog/tasks.example.json`.
+
+Backlog supports a repository registry:
+
+```json
+{
+  "defaults": {
+    "repository_id": "default",
+    "base_branch": "main",
+    "working_directory": ".",
+    "retry_limit": 2,
+    "executor": { "type": "codex" }
+  },
+  "repositories": [
+    { "id": "default", "path": "/absolute/path/to/repo-a" },
+    { "id": "api", "path": "/absolute/path/to/repo-b" }
+  ],
+  "tasks": [
+    {
+      "id": "example-task",
+      "title": "Example task",
+      "repository_id": "api"
+    }
+  ]
+}
+```
+
+When a run starts, branch/clean checks are validated per repository used by the selected tasks.
 
 ## Folder structure
 
@@ -97,7 +125,9 @@ http://127.0.0.1:8765
 The dashboard lets you:
 
 - create, edit, and delete backlog tasks
+- register repositories (`id` + absolute `path`) with validation
 - attach reference files and photos to each backlog task
+- choose which repository each task runs in
 - move reviewed tasks into a `Done` section without losing their history
 - launch all tasks or only selected tasks
 - inspect the reusable branch and worktree assigned to each task id

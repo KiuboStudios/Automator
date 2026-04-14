@@ -31,7 +31,14 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the local automation dashboard.")
     parser.add_argument("--host", default="127.0.0.1", help="Host interface to bind.")
     parser.add_argument("--port", type=int, default=8765, help="Port to listen on.")
-    parser.add_argument("--repo-root", default=str(Path.cwd()), help="Path to the target git repository root.")
+    parser.add_argument(
+        "--repo-root",
+        default=str(Path.cwd()),
+        help=(
+            "Fallback git repository root for tasks without explicit repository "
+            "assignment."
+        ),
+    )
     parser.add_argument(
         "--backlog",
         default=None,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import Optional
 from urllib import error, request
 from urllib.parse import urlparse
 
@@ -31,16 +32,15 @@ class NoopPullRequestPublisher:
 class GitHubPullRequestPublisher:
     def __init__(
         self,
-        repo_root: Path,
+        repo_root: Optional[Path] = None,
         remote_name: str = "origin",
         token_env_var: str = "GITHUB_TOKEN",
         draft: bool = True,
     ) -> None:
-        self.repo_root = repo_root
+        self.repo_root = repo_root.resolve() if repo_root else None
         self.remote_name = remote_name
         self.token_env_var = token_env_var
         self.draft = draft
-        self.git = GitRepository(repo_root)
 
     def publish(
         self,
@@ -56,7 +56,8 @@ class GitHubPullRequestPublisher:
                 "Set a fine-grained GitHub personal access token before running automation."
             )
 
-        remote = self.git.resolve_github_remote(self.remote_name, cwd=worktree_path)
+        git_repo = GitRepository(worktree_path)
+        remote = git_repo.resolve_github_remote(self.remote_name, cwd=worktree_path)
         logger.log(
             "push",
             "started",
@@ -65,7 +66,7 @@ class GitHubPullRequestPublisher:
             repository=remote.repository_full_name,
         )
         try:
-            self.git.push_branch_with_token(
+            git_repo.push_branch_with_token(
                 cwd=worktree_path,
                 branch_name=branch_name,
                 token=token,
@@ -82,7 +83,7 @@ class GitHubPullRequestPublisher:
                 repository=remote.repository_full_name,
                 error=str(push_error),
             )
-            self.git.push_branch(
+            git_repo.push_branch(
                 cwd=worktree_path,
                 branch_name=branch_name,
                 remote_name=self.remote_name,
