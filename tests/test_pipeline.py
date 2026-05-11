@@ -196,7 +196,7 @@ class OvernightRunnerTests(unittest.TestCase):
             self.assertIn("--add-dir", command)
             self.assertIn(str(image_path.parent.resolve()), command)
             self.assertIn("--profile", command)
-            self.assertEqual(command[command.index("--profile") + 1], "cli")
+            self.assertEqual(command[command.index("--profile") + 1], "overnight")
 
     def test_codex_executor_uses_extension_fallback_for_image_attachments(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

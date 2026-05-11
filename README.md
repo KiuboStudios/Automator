@@ -86,6 +86,43 @@ Use a fine-grained personal access token with repository access and at least:
 
 The runner also expects the local `codex` CLI to be installed and available in `PATH`.
 
+### Codex profile
+
+The automator runs Codex with the `overnight` profile by default. Define or edit that profile in your user Codex config:
+
+```text
+~/.codex/config.toml
+```
+
+Example:
+
+```toml
+[profiles.overnight]
+model = "gpt-5.5"
+model_reasoning_effort = "medium"
+approval_policy = "never"
+sandbox_mode = "workspace-write"
+
+[profiles.cli]
+model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+```
+
+Use `overnight` for unattended automator runs. Keep `cli` for direct terminal sessions, for example:
+
+```bash
+codex --profile cli
+```
+
+To make the automator use a different profile for one shell session, set `CODEX_PROFILE` before launching it:
+
+```bash
+export CODEX_PROFILE=overnight
+python3 main.py --repo-root /absolute/path/to/target-repo
+```
+
 If you launch the local dashboard, export `GITHUB_TOKEN` before starting it. If you change the token later, restart `python3 dashboard.py` so new runs inherit the updated environment.
 
 Attachment diagnostics are enabled by default in log mode. Control strictness with:

@@ -306,7 +306,7 @@ class CodexTaskExecutor:
     def __init__(self, codex_bin: Optional[str] = None, model: Optional[str] = None) -> None:
         self.codex_bin = codex_bin or resolve_codex_binary()
         self.model = model
-        self.profile = os.environ.get("CODEX_PROFILE", "cli").strip() or "cli"
+        self.profile = os.environ.get("CODEX_PROFILE", "overnight").strip() or "overnight"
 
     def execute(
         self,
